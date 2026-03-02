@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_DB=ava
+      - POSTGRES_USER=ava
+      - POSTGRES_PASSWORD=ava_secret_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ava -d ava"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API + WebSocket Server
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "0.0.0.0:3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - FRONTEND_URL=*
+      - DATABASE_URL=postgresql://ava:ava_secret_password@postgres:5432/ava
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend (React + Vite) - Production
+  # NOTE: VITE_BACKEND_URL is intentionally NOT set so the frontend
+  # dynamically determines the backend URL based on the browser's hostname.
+  # This allows multi-user sync to work across different machines.
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "0.0.0.0:8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Development service with hot reload
+  erpai-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "0.0.0.0:3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    profiles:
+      - dev
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+
+networks:
+  default:
+    name: ava-network
