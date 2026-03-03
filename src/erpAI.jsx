@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Folder, FolderOpen, ChevronRight, ChevronDown, CheckCircle2, Circle, Clock, Plus, Settings, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Send, Wrench, Sparkles, FileText, Image, LogOut, ChevronUp, X, MoreVertical, SplitSquareHorizontal, Maximize2, Share2, Users, Wifi, WifiOff, Loader2, Menu, Mail, Lock, AlertCircle, Trash2, Pencil, FolderEdit, Bell, UserMinus, UserCog, ArrowLeft, RefreshCw, CheckCircle, Sun, Moon, Palette, Upload, RotateCcw, Plug, Power, Zap, Terminal, Globe, Database, MessageSquare, Github, Pin, HelpCircle, BarChart3, TrendingUp, TrendingDown } from 'lucide-react';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import useCollaboration, { collaborationAPI } from './useCollaboration';
 import Onboarding from './Onboarding';
 
@@ -928,6 +929,8 @@ const Tab = ({ task, isActive, onClick, onClose, index, onDragStart, onDragOver,
 
       {/* Tab Dropdown Menu - Using Portal to render at document body level */}
       {isMenuOpen && createPortal(
+        <>
+        <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={(e) => { e.stopPropagation(); setMenuOpenId(null); }} />
         <div
           className={`fixed rounded-lg shadow-lg border py-1 min-w-40 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}
           style={{
@@ -996,7 +999,8 @@ const Tab = ({ task, isActive, onClick, onClose, index, onDragStart, onDragOver,
             <X size={14} />
             <span>Close Tab</span>
           </button>
-        </div>,
+        </div>
+        </>,
         document.body
       )}
 
@@ -1074,9 +1078,139 @@ const getMessageColors = (email, isCurrentUser, darkMode = false) => {
   return colorSchemes[Math.abs(hash) % colorSchemes.length];
 };
 
+// Parse message content to extract chart blocks
+const CHART_REGEX = /```chart\s*\n([\s\S]*?)```/g;
+
+const parseMessageContent = (content) => {
+  if (!content || typeof content !== 'string') return [{ type: 'text', content: content || '' }];
+
+  const segments = [];
+  let lastIndex = 0;
+  let match;
+
+  const regex = new RegExp(CHART_REGEX.source, 'g');
+  while ((match = regex.exec(content)) !== null) {
+    // Add text before the chart block
+    if (match.index > lastIndex) {
+      const text = content.slice(lastIndex, match.index).trim();
+      if (text) segments.push({ type: 'text', content: text });
+    }
+    // Try to parse chart JSON
+    try {
+      const chartData = JSON.parse(match[1].trim());
+      if (chartData && chartData.type && chartData.data) {
+        segments.push({ type: 'chart', data: chartData });
+      } else {
+        segments.push({ type: 'text', content: match[0] });
+      }
+    } catch (e) {
+      segments.push({ type: 'text', content: match[0] });
+    }
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text after last chart block
+  if (lastIndex < content.length) {
+    const text = content.slice(lastIndex).trim();
+    if (text) segments.push({ type: 'text', content: text });
+  }
+
+  return segments.length > 0 ? segments : [{ type: 'text', content }];
+};
+
+// Chart renderer component for inline charts
+const ChartRenderer = ({ chartData, darkMode, themeHex }) => {
+  if (!chartData || !chartData.type || !chartData.data) return null;
+
+  const textColor = darkMode ? '#d1d5db' : '#374151';
+  const gridColor = darkMode ? '#374151' : '#e5e7eb';
+  const tooltipBg = darkMode ? '#1f2937' : '#ffffff';
+  const tooltipBorder = darkMode ? '#4b5563' : '#e5e7eb';
+
+  const defaultColors = [themeHex || '#22c55e', '#3b82f6', '#f97316', '#a855f7', '#14b8a6', '#f43f5e', '#eab308', '#6366f1'];
+
+  const { type, title, xKey, series = [], data } = chartData;
+
+  const tooltipStyle = {
+    contentStyle: { backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: '8px', fontSize: '12px' },
+    labelStyle: { color: textColor, fontWeight: 600 },
+    itemStyle: { color: textColor }
+  };
+
+  const renderChart = () => {
+    switch (type) {
+      case 'bar':
+        return (
+          <BarChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+            <XAxis dataKey={xKey} tick={{ fill: textColor, fontSize: 11 }} axisLine={{ stroke: gridColor }} />
+            <YAxis tick={{ fill: textColor, fontSize: 11 }} axisLine={{ stroke: gridColor }} />
+            <Tooltip {...tooltipStyle} />
+            {series.length > 1 && <Legend wrapperStyle={{ fontSize: '11px', color: textColor }} />}
+            {series.map((s, i) => (
+              <Bar key={s.key} dataKey={s.key} name={s.label || s.key} fill={s.color || defaultColors[i % defaultColors.length]} radius={[4, 4, 0, 0]} />
+            ))}
+          </BarChart>
+        );
+      case 'line':
+        return (
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+            <XAxis dataKey={xKey} tick={{ fill: textColor, fontSize: 11 }} axisLine={{ stroke: gridColor }} />
+            <YAxis tick={{ fill: textColor, fontSize: 11 }} axisLine={{ stroke: gridColor }} />
+            <Tooltip {...tooltipStyle} />
+            {series.length > 1 && <Legend wrapperStyle={{ fontSize: '11px', color: textColor }} />}
+            {series.map((s, i) => (
+              <Line key={s.key} type="monotone" dataKey={s.key} name={s.label || s.key} stroke={s.color || defaultColors[i % defaultColors.length]} strokeWidth={2} dot={{ fill: s.color || defaultColors[i % defaultColors.length], r: 4 }} />
+            ))}
+          </LineChart>
+        );
+      case 'area':
+        return (
+          <AreaChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+            <XAxis dataKey={xKey} tick={{ fill: textColor, fontSize: 11 }} axisLine={{ stroke: gridColor }} />
+            <YAxis tick={{ fill: textColor, fontSize: 11 }} axisLine={{ stroke: gridColor }} />
+            <Tooltip {...tooltipStyle} />
+            {series.length > 1 && <Legend wrapperStyle={{ fontSize: '11px', color: textColor }} />}
+            {series.map((s, i) => (
+              <Area key={s.key} type="monotone" dataKey={s.key} name={s.label || s.key} stroke={s.color || defaultColors[i % defaultColors.length]} fill={s.color || defaultColors[i % defaultColors.length]} fillOpacity={0.2} strokeWidth={2} />
+            ))}
+          </AreaChart>
+        );
+      case 'pie':
+        return (
+          <PieChart>
+            <Tooltip {...tooltipStyle} />
+            <Legend wrapperStyle={{ fontSize: '11px', color: textColor }} />
+            <Pie data={data} dataKey={series[0]?.key || 'value'} nameKey={xKey || 'name'} cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={true} fontSize={10} fill={themeHex}>
+              {data.map((entry, i) => (
+                <Cell key={`cell-${i}`} fill={defaultColors[i % defaultColors.length]} />
+              ))}
+            </Pie>
+          </PieChart>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const chart = renderChart();
+  if (!chart) return null;
+
+  return (
+    <div className={`my-2 p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-600' : 'bg-white border-gray-200'}`}>
+      {title && <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{title}</p>}
+      <ResponsiveContainer width="100%" height={220}>
+        {chart}
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
 // Message bubble component
-const Message = ({ content, isUser, timestamp, userName, userEmail, currentUserEmail, onPinMessage, darkMode }) => {
-  const isCurrentUser = isUser || (userEmail && userEmail === currentUserEmail);
+const Message = ({ content, isUser, timestamp, userName, userEmail, currentUserEmail, onPinMessage, darkMode, themeHex }) => {
+  const isCurrentUser = userEmail ? userEmail === currentUserEmail : isUser;
   const isAI = !userEmail || userEmail === 'ava@unit4.com';
   const isCollaborator = !isCurrentUser && !isAI;
   const colors = getMessageColors(userEmail, isCurrentUser, darkMode);
@@ -1118,7 +1252,11 @@ const Message = ({ content, isUser, timestamp, userName, userEmail, currentUserE
             isCurrentUser ? 'rounded-br-md' : 'rounded-bl-md'
           } relative`}
         >
-          <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+          {parseMessageContent(content).map((segment, idx) => (
+            segment.type === 'chart'
+              ? <ChartRenderer key={idx} chartData={segment.data} darkMode={darkMode} themeHex={themeHex} />
+              : <p key={idx} className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{segment.content}</p>
+          ))}
           <span className={`text-[10px] sm:text-xs mt-1 block ${colors.timestamp}`}>
             {timestamp}
           </span>
@@ -1751,6 +1889,11 @@ export default function ErpAI() {
     setNewUserRole('consultant');
     setCreateUserError('');
 
+    // Reset Claude state
+    setClaudeConfigured(false);
+    setClaudeApiKey('');
+    setClaudeConfiguring(false);
+
     // Reset MCP plugin states
     setShowMCPPlugins(false);
     setShowAddPluginModal(false);
@@ -1919,6 +2062,19 @@ export default function ErpAI() {
       }
     };
   }, [activeTask, isConnected, joinTask, leaveTask]);
+
+  // Check Claude API status on login - global key works for all users
+  useEffect(() => {
+    if (isLoggedIn) {
+      collaborationAPI.getClaudeStatus()
+        .then(status => {
+          if (status?.configured) {
+            setClaudeConfigured(true);
+          }
+        })
+        .catch(err => console.log('Could not check Claude status:', err.message));
+    }
+  }, [isLoggedIn]);
 
   // Refs to access current values in callbacks without causing re-subscriptions
   const activeTaskRef = useRef(activeTask);
@@ -2969,6 +3125,8 @@ export default function ErpAI() {
         <div className={`p-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} relative`}>
           {/* Flyout Menu */}
           {userMenuOpen && (
+            <>
+            <div className="fixed inset-0 z-[9]" onClick={() => setUserMenuOpen(false)} />
             <div className={`absolute bottom-full left-3 right-3 mb-2 rounded-lg shadow-lg border py-1 z-10 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
               <button
                 onClick={() => { console.log('Settings clicked'); setUserMenuOpen(false); }}
@@ -3032,6 +3190,7 @@ export default function ErpAI() {
                 <span className="text-sm">Sign out</span>
               </button>
             </div>
+            </>
           )}
 
           {/* MCP Plugins Button */}
@@ -3500,6 +3659,7 @@ export default function ErpAI() {
                     currentUserEmail={currentUser?.email}
                     onPinMessage={handlePinMessage}
                     darkMode={darkMode}
+                    themeHex={THEME_COLORS[appSettings.themeColor].hex}
                   />
                 ))}
               </div>
@@ -3611,6 +3771,7 @@ export default function ErpAI() {
                     currentUserEmail={currentUser?.email}
                     onPinMessage={handlePinMessage}
                     darkMode={darkMode}
+                    themeHex={THEME_COLORS[appSettings.themeColor].hex}
                   />
                 ))}
               </div>
@@ -3880,8 +4041,8 @@ export default function ErpAI() {
 
       {/* New Task Modal */}
       {showNewTaskModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={() => setShowNewTaskModal(false)}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <h2 className={`text-lg font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>Create New Task</h2>
@@ -4023,8 +4184,8 @@ export default function ErpAI() {
 
       {/* Share Modal */}
       {showShareModal && shareTask && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={() => setShowShareModal(false)}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-center gap-2">
@@ -4182,8 +4343,8 @@ export default function ErpAI() {
 
       {/* Rename Task Modal */}
       {showRenameTaskModal && renameTask && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={() => { setShowRenameTaskModal(false); setRenameTask(null); }}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-center gap-2">
                 <Pencil size={20} className={THEME_COLORS[appSettings.themeColor].primaryText} />
@@ -4243,8 +4404,8 @@ export default function ErpAI() {
 
       {/* Delete Task Modal */}
       {showDeleteTaskModal && deleteTask && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={() => { setShowDeleteTaskModal(false); setDeleteTask(null); }}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-center gap-2">
                 <Trash2 size={20} className="text-red-500" />
@@ -4291,8 +4452,8 @@ export default function ErpAI() {
 
       {/* Rename Folder Modal */}
       {showRenameFolderModal && renameFolder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={() => { setShowRenameFolderModal(false); setRenameFolder(null); }}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-center gap-2">
                 <FolderEdit size={20} className={THEME_COLORS[appSettings.themeColor].primaryText} />
@@ -4352,8 +4513,8 @@ export default function ErpAI() {
 
       {/* Delete Folder Modal */}
       {showDeleteFolderModal && deleteFolderTarget && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={() => { setShowDeleteFolderModal(false); setDeleteFolderTarget(null); }}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-center gap-2">
                 <Trash2 size={20} className="text-red-500" />
@@ -4405,8 +4566,8 @@ export default function ErpAI() {
 
       {/* Admin Settings Modal - App Appearance */}
       {showAdminSettings && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-lg sm:mx-4 overflow-hidden max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={() => setShowAdminSettings(false)}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-lg sm:mx-4 overflow-hidden max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-center gap-2">
@@ -4622,8 +4783,8 @@ export default function ErpAI() {
 
       {/* MCP Plugins Modal */}
       {showMCPPlugins && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-2xl sm:mx-4 overflow-hidden max-h-[90vh] flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={() => setShowMCPPlugins(false)}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-2xl sm:mx-4 overflow-hidden max-h-[90vh] flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className="flex items-center gap-2">
@@ -4822,8 +4983,8 @@ export default function ErpAI() {
 
       {/* Add/Edit Plugin Modal */}
       {showAddPluginModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-[60]">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-lg sm:mx-4 overflow-hidden max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-[60]" onClick={() => { setShowAddPluginModal(false); setEditingPlugin(null); }}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-lg sm:mx-4 overflow-hidden max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <h2 className={`text-lg font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
@@ -5012,8 +5173,8 @@ export default function ErpAI() {
 
       {/* Quick Action Modal */}
       {showQuickActionModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={() => { setShowQuickActionModal(false); setEditingActionIndex(null); }}>
+          <div className={`rounded-t-xl sm:rounded-xl shadow-2xl w-full sm:max-w-md sm:mx-4 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className={`flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <h2 className={`text-lg font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>

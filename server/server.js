@@ -76,6 +76,9 @@ const generateAvaResponse = (taskId, userMessage, userName, taskTitle = '') => {
   }
 
   if (taskId === 'task-timesheets' || normalizedTitle.includes('timesheet')) {
+    if (message.includes('chart') || message.includes('graph') || message.includes('visuali') || message.includes('plot')) {
+      return `Here's a visualisation of your hours logged this week:\n\n\`\`\`chart\n${JSON.stringify({type:"area",title:"Hours Logged This Week",xKey:"day",series:[{key:"hours",label:"Hours",color:"#3b82f6"}],data:[{day:"Mon",hours:8},{day:"Tue",hours:8},{day:"Wed",hours:7.5},{day:"Thu",hours:8},{day:"Fri",hours:0}]},null,2)}\n\`\`\`\n\nYou've logged 31.5 of 40 hours so far. Would you like to add hours for Friday?`;
+    }
     if (message.includes('submit') || message.includes('fill') || message.includes('enter')) {
       return `I'll help you submit your timesheet! 📝\n\n**Current Week Status:** 32 of 40 hours logged\n\nHours by project:\n• Project Alpha: 16 hours\n• Client Support: 10 hours\n• Internal Meetings: 6 hours\n\nYou need to log 8 more hours. Would you like me to:\n1. Add hours to an existing project\n2. Start a new time entry\n3. Copy last week's timesheet`;
     }
@@ -89,6 +92,9 @@ const generateAvaResponse = (taskId, userMessage, userName, taskTitle = '') => {
   }
 
   if (taskId === 'task-expenses' || normalizedTitle.includes('expense')) {
+    if (message.includes('chart') || message.includes('graph') || message.includes('visuali') || message.includes('plot')) {
+      return `Here's a breakdown of your expenses by category:\n\n\`\`\`chart\n${JSON.stringify({type:"pie",title:"Expenses by Category - YTD",xKey:"category",series:[{key:"amount",label:"Amount (GBP)"}],data:[{category:"Travel",amount:285},{category:"Meals",amount:143},{category:"Accommodation",amount:420},{category:"Software",amount:95},{category:"Office Supplies",amount:62}]},null,2)}\n\`\`\`\n\nTotal expenses YTD: £1,005. Would you like to submit a new claim?`;
+    }
     if (message.includes('submit') || message.includes('claim') || message.includes('add') || message.includes('new')) {
       return `I'll help you submit an expense claim! 💳\n\nPlease provide:\n1. **Amount**\n2. **Category** (Travel, Meals, Supplies, Other)\n3. **Date** of expense\n4. **Description**\n\nOr you can upload a receipt and I'll extract the details automatically.\n\n💡 Tip: Expenses under £50 are auto-approved!`;
     }
@@ -127,6 +133,9 @@ const generateAvaResponse = (taskId, userMessage, userName, taskTitle = '') => {
   }
 
   if (normalizedTitle.includes('revenue') || normalizedTitle.includes('billing')) {
+    if (message.includes('chart') || message.includes('graph') || message.includes('visuali') || message.includes('plot') || message.includes('show me')) {
+      return `Here's a visual breakdown of Q1 revenue:\n\n\`\`\`chart\n${JSON.stringify({type:"bar",title:"Q1 2026 Revenue by Month",xKey:"month",series:[{key:"revenue",label:"Revenue (GBP K)",color:"#22c55e"},{key:"target",label:"Target (GBP K)",color:"#94a3b8"}],data:[{month:"Jan",revenue:410,target:400},{month:"Feb",revenue:395,target:400},{month:"Mar",revenue:450,target:400}]},null,2)}\n\`\`\`\n\nQ1 total forecast: £1,255,000 vs target of £1,200,000 (105%). Would you like to see revenue by client?`;
+    }
     if (message.includes('invoice') || message.includes('billing') || message.includes('outstanding')) {
       return `**Invoicing Summary - This Month:**\n\n**Invoiced:** £385,000\n**Ready to Invoice:** £142,500\n**Overdue (>30 days):** £67,200\n\n**Outstanding Invoices:**\n1. Contoso - INV-2026-041 - £95,000 - Due 15 Mar\n2. Tailspin Toys - INV-2026-038 - £67,200 - **Overdue** (45 days)\n3. Northwind - INV-2026-045 - £47,500 - Due 28 Feb\n\n**Billing Milestones This Month:**\n• Fabrikam Phase 2 sign-off: £120,000 (pending client approval)\n• Woodgrove Sprint 3 delivery: £87,500 (on track)\n\nWould you like me to chase any overdue invoices or prepare a billing forecast?`;
     }
@@ -137,6 +146,9 @@ const generateAvaResponse = (taskId, userMessage, userName, taskTitle = '') => {
   }
 
   if (normalizedTitle.includes('resource') || normalizedTitle.includes('utilisation')) {
+    if (message.includes('chart') || message.includes('graph') || message.includes('visuali') || message.includes('plot') || message.includes('show me')) {
+      return `Here's the team utilisation breakdown by role:\n\n\`\`\`chart\n${JSON.stringify({type:"bar",title:"Utilisation Rate by Role (%)",xKey:"role",series:[{key:"actual",label:"Actual %",color:"#3b82f6"},{key:"target",label:"Target %",color:"#94a3b8"}],data:[{role:"Sr. Consultant",actual:84,target:80},{role:"Consultant",actual:78,target:80},{role:"Sol. Architect",actual:72,target:75},{role:"Project Mgr",actual:69,target:65},{role:"Tech. Consultant",actual:81,target:80}]},null,2)}\n\`\`\`\n\nOverall utilisation: 76.5% vs 80% target. Would you like to see individual performance?`;
+    }
     if (message.includes('rate') || message.includes('utilisation') || message.includes('utilization') || message.includes('target')) {
       return `**Resource Utilisation - February 2026:**\n\n**Target:** 80% | **Actual:** 76.5%\n\n**By Role:**\n• Senior Consultants: 84% (target: 80%)\n• Consultants: 78% (target: 80%)\n• Solution Architects: 72% (target: 75%)\n• Project Managers: 69% (target: 65%)\n• Technical Consultants: 81% (target: 80%)\n\n**Top Performers:**\n1. Sarah Senior - 91% utilisation\n2. Tom Technical - 88% utilisation\n3. Fiona Functional - 85% utilisation\n\n**Below Target:**\n1. New Hire (ramping) - 45%\n2. Sam Architect - 62% (between projects)\n\nWould you like to see capacity planning or bench time details?`;
     }
@@ -147,6 +159,9 @@ const generateAvaResponse = (taskId, userMessage, userName, taskTitle = '') => {
   }
 
   if (normalizedTitle.includes('margin') || normalizedTitle.includes('profitability')) {
+    if (message.includes('chart') || message.includes('graph') || message.includes('visuali') || message.includes('plot') || message.includes('show me')) {
+      return `Here's the margin analysis across all projects:\n\n\`\`\`chart\n${JSON.stringify({type:"bar",title:"Gross Margin by Project (%)",xKey:"project",series:[{key:"margin",label:"Margin %"}],data:[{project:"Northwind",margin:42},{project:"Contoso",margin:38},{project:"Fabrikam",margin:35},{project:"Woodgrove",margin:33},{project:"Adventure",margin:28},{project:"Tailspin",margin:25},{project:"Litware",margin:18}]},null,2)}\n\`\`\`\n\nPortfolio average: 34.2% (target: 35%). Litware needs urgent attention at 18%. Would you like a cost breakdown?`;
+    }
     if (message.includes('margin') || message.includes('profit') || message.includes('gross')) {
       return `**Project Margin Analysis - February 2026:**\n\n**Portfolio Gross Margin:** 34.2% (target: 35%)\n\n**By Project:**\n• Northwind HR Module: 42% (strong)\n• Contoso ERP Implementation: 38%\n• Fabrikam Cloud Migration: 35%\n• Woodgrove Finance Upgrade: 33%\n• Adventure Works Analytics: 28% (under target)\n• Tailspin Toys Integration: 25% (overruns)\n• Litware Payroll Migration: 18% (critical)\n\n**Margin Trend:** Down 1.8% from January (scope creep on 2 projects)\n\n**Action Required:** Litware margin at risk of falling below 15% threshold\n\nWould you like a detailed cost breakdown for any project?`;
     }
@@ -157,6 +172,9 @@ const generateAvaResponse = (taskId, userMessage, userName, taskTitle = '') => {
   }
 
   if (normalizedTitle.includes('forecast')) {
+    if (message.includes('chart') || message.includes('graph') || message.includes('visuali') || message.includes('plot') || message.includes('show me')) {
+      return `Here's the quarterly revenue forecast for 2026:\n\n\`\`\`chart\n${JSON.stringify({type:"line",title:"2026 Revenue Forecast (GBP K)",xKey:"quarter",series:[{key:"forecast",label:"Forecast",color:"#22c55e"},{key:"target",label:"Target",color:"#f97316"}],data:[{quarter:"Q1",forecast:1255,target:1200},{quarter:"Q2",forecast:1380,target:1300},{quarter:"Q3",forecast:1200,target:1250},{quarter:"Q4",forecast:1450,target:1250}]},null,2)}\n\`\`\`\n\nFull year forecast: £5.29M vs £5.0M target (+5.8%). Would you like to see the pipeline breakdown?`;
+    }
     if (message.includes('revenue') || message.includes('pipeline') || message.includes('outlook')) {
       return `**Revenue Forecast - 2026:**\n\n**Quarterly Outlook:**\n• Q1: £1,255,000 (95% confidence - mostly contracted)\n• Q2: £1,380,000 (75% confidence - pipeline dependent)\n• Q3: £1,200,000 (50% confidence - requires new wins)\n• Q4: £1,450,000 (40% confidence - budget season)\n\n**Full Year Forecast:** £5,285,000 (target: £5,000,000)\n\n**Pipeline by Stage:**\n• Contracted: £2,400,000\n• Verbal commitment: £850,000\n• Proposal submitted: £1,200,000\n• Qualified lead: £1,800,000\n\n**Win Rate (rolling 12m):** 38%\n\nWould you like to see forecasts by client or service line?`;
     }
@@ -167,6 +185,9 @@ const generateAvaResponse = (taskId, userMessage, userName, taskTitle = '') => {
   }
 
   if (normalizedTitle.includes('budget')) {
+    if (message.includes('chart') || message.includes('graph') || message.includes('visuali') || message.includes('plot') || message.includes('show me')) {
+      return `Here's the budget vs actuals across all projects:\n\n\`\`\`chart\n${JSON.stringify({type:"bar",title:"Budget vs Actuals by Project (GBP K)",xKey:"project",series:[{key:"budget",label:"Budget",color:"#94a3b8"},{key:"actual",label:"Spent",color:"#3b82f6"}],data:[{project:"Contoso",budget:1200,actual:680},{project:"Woodgrove",budget:750,actual:240},{project:"Tailspin",budget:560,actual:380},{project:"Fabrikam",budget:480,actual:210},{project:"Litware",budget:410,actual:260},{project:"Northwind",budget:320,actual:285},{project:"Adventure",budget:290,actual:225}]},null,2)}\n\`\`\`\n\nPortfolio: £2.18M spent of £4.01M total budget (54%). Would you like burn rate analysis?`;
+    }
     if (message.includes('variance') || message.includes('actual') || message.includes('vs') || message.includes('track')) {
       return `**Budget vs Actuals - February 2026:**\n\n**Portfolio Summary:**\n• Total Budget: £4,010,000\n• Spent to Date: £2,180,000 (54%)\n• Remaining: £1,830,000\n\n**By Project:**\n• Contoso ERP - Budget: £1,200K | Actual: £680K | On track\n• Fabrikam Cloud - Budget: £480K | Actual: £210K | On track\n• Northwind HR - Budget: £320K | Actual: £285K | 89% spent, 85% done\n• Woodgrove Finance - Budget: £750K | Actual: £240K | On track\n• Tailspin Toys - Budget: £560K | Actual: £380K | 68% spent, 55% done\n• Adventure Works - Budget: £290K | Actual: £225K | 78% spent, 70% done\n• Litware Payroll - Budget: £410K | Actual: £260K | 63% spent, 45% done\n\nWould you like to see the burn rate analysis for any project?`;
     }
@@ -174,6 +195,12 @@ const generateAvaResponse = (taskId, userMessage, userName, taskTitle = '') => {
       return `**Burn Rate Analysis - At Risk Projects:**\n\n**Litware Payroll Migration:**\n• Monthly burn: £58,000\n• Remaining budget: £150,000\n• Runway: 2.6 months\n• Estimated completion: 4.5 months\n• **Projected overrun: £111,000 (27%)**\n\n**Tailspin Toys Integration:**\n• Monthly burn: £52,000\n• Remaining budget: £180,000\n• Runway: 3.5 months\n• Estimated completion: 4.0 months\n• **Projected overrun: £28,000 (5%)**\n\nAll other projects within 5% of planned burn.\n\n**Recommendation:** Initiate change request for Litware (£111K exposure). Schedule budget review for Tailspin.\n\nWould you like me to draft a change request or prepare a budget review pack?`;
     }
     return `Hi ${userName}! I can help you track project budgets. I can:\n\n• Compare budgets vs actuals with variance analysis\n• Analyse burn rates and project runway\n• Monitor cost overruns and underspends\n• Generate budget reports\n\nWhat would you like to review?`;
+  }
+
+  // ============ GENERIC CHART FALLBACK ============
+
+  if (message.includes('chart') || message.includes('graph') || message.includes('visuali') || message.includes('plot')) {
+    return `Here's a sample visualisation for you:\n\n\`\`\`chart\n${JSON.stringify({type:"bar",title:"Quarterly Performance Overview",xKey:"quarter",series:[{key:"revenue",label:"Revenue (GBP K)",color:"#22c55e"},{key:"costs",label:"Costs (GBP K)",color:"#f97316"}],data:[{quarter:"Q1 2025",revenue:1120,costs:780},{quarter:"Q2 2025",revenue:1250,costs:820},{quarter:"Q3 2025",revenue:1180,costs:790},{quarter:"Q4 2025",revenue:1340,costs:850},{quarter:"Q1 2026",revenue:1255,costs:810}]},null,2)}\n\`\`\`\n\nThis is sample data. Try asking for a chart in a specific task like Revenue & Billing, Budget Tracking, or Resource Utilisation for more detailed visualisations!`;
   }
 
   // ============ GENERIC RESPONSES ============

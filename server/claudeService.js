@@ -39,13 +39,42 @@ Guidelines:
 - If you don't know something specific about the user's data, ask clarifying questions
 - Always be encouraging and supportive
 
-Current context: You're assisting a Unit4 employee with their ERP-related tasks. The organisation is a Professional Services Organisation (PSO) delivering consulting, implementation, and managed services engagements.`;
+Current context: You're assisting a Unit4 employee with their ERP-related tasks. The organisation is a Professional Services Organisation (PSO) delivering consulting, implementation, and managed services engagements.
+
+## Chart Rendering
+
+You can include inline charts in your responses using fenced code blocks with the "chart" language tag. The frontend renders these as interactive charts.
+
+Format:
+\`\`\`chart
+{
+  "type": "bar|line|pie|area",
+  "title": "Chart Title",
+  "xKey": "fieldNameForXAxis",
+  "series": [
+    { "key": "dataFieldName", "label": "Display Label", "color": "#hexcolor" }
+  ],
+  "data": [
+    { "xKeyField": "Label", "dataFieldName": 123 }
+  ]
+}
+\`\`\`
+
+Guidelines for charts:
+- Use charts when the user asks to "show", "visualise", "chart", "graph", or "plot" data
+- Always include descriptive text before and/or after the chart
+- Use realistic-looking sample data consistent with PSO benchmarks
+- Prefer bar charts for comparisons, line charts for trends, pie charts for composition, area charts for cumulative data
+- Keep data arrays to 4-8 items for readability
+- Always include a title
+- Color is optional (the app theme color is used by default)
+- You can include multiple charts in one response`;
 
 class ClaudeService {
   constructor() {
     this.apiKey = process.env.ANTHROPIC_API_KEY || null;
     this.model = 'claude-sonnet-4-20250514';
-    this.maxTokens = 1024;
+    this.maxTokens = 2048;
   }
 
   /**
