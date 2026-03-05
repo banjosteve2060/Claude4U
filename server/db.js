@@ -134,6 +134,36 @@ async function initSchema() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_shared_tasks_email ON shared_tasks(email);`);
 
+    // 8. notifications — persistent notification history
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id         UUID         PRIMARY KEY,
+        email      VARCHAR(255) NOT NULL,
+        type       VARCHAR(50)  NOT NULL,
+        task_id    VARCHAR(255) NOT NULL,
+        task_title VARCHAR(500) NOT NULL DEFAULT '',
+        from_name  VARCHAR(255) NOT NULL DEFAULT '',
+        from_email VARCHAR(255) NOT NULL DEFAULT '',
+        message    TEXT         NOT NULL DEFAULT '',
+        is_read    BOOLEAN      NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notifications_email ON notifications(email);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(email, is_read);`);
+
+    // 9. user_memories — persistent memory for Ava across conversations
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_memories (
+        id         UUID         PRIMARY KEY,
+        email      VARCHAR(255) NOT NULL,
+        memory     TEXT         NOT NULL,
+        source_task_id VARCHAR(255),
+        created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_user_memories_email ON user_memories(email);`);
+
     await client.query('COMMIT');
     console.log('[DB] Schema initialized successfully');
   } catch (err) {
@@ -493,6 +523,93 @@ async function deleteSharedTasksByEmail(email) {
 }
 
 // =============================================
+// Notification Queries
+// =============================================
+
+async function getNotifications(email, limit = 50) {
+  const result = await pool.query(
+    `SELECT * FROM notifications
+     WHERE LOWER(email) = LOWER($1)
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [email, limit]
+  );
+  return result.rows;
+}
+
+async function getUnreadNotificationCount(email) {
+  const result = await pool.query(
+    `SELECT COUNT(*) as count FROM notifications
+     WHERE LOWER(email) = LOWER($1) AND is_read = FALSE`,
+    [email]
+  );
+  return parseInt(result.rows[0].count, 10);
+}
+
+async function addNotification(id, email, type, taskId, taskTitle, fromName, fromEmail, message) {
+  const result = await pool.query(
+    `INSERT INTO notifications (id, email, type, task_id, task_title, from_name, from_email, message, is_read, created_at)
+     VALUES ($1, LOWER($2), $3, $4, $5, $6, $7, $8, FALSE, NOW()) RETURNING *`,
+    [id, email, type, taskId, taskTitle, fromName, fromEmail, message]
+  );
+  return result.rows[0];
+}
+
+async function markNotificationRead(id, email) {
+  await pool.query(
+    `UPDATE notifications SET is_read = TRUE
+     WHERE id = $1 AND LOWER(email) = LOWER($2)`,
+    [id, email]
+  );
+}
+
+async function markAllNotificationsRead(email) {
+  await pool.query(
+    `UPDATE notifications SET is_read = TRUE
+     WHERE LOWER(email) = LOWER($1) AND is_read = FALSE`,
+    [email]
+  );
+}
+
+// =============================================
+// User Memory Queries
+// =============================================
+
+async function getUserMemories(email, limit = 20) {
+  const result = await pool.query(
+    `SELECT * FROM user_memories
+     WHERE LOWER(email) = LOWER($1)
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [email, limit]
+  );
+  return result.rows;
+}
+
+async function addUserMemory(id, email, memory, sourceTaskId) {
+  const result = await pool.query(
+    `INSERT INTO user_memories (id, email, memory, source_task_id, created_at)
+     VALUES ($1, LOWER($2), $3, $4, NOW()) RETURNING *`,
+    [id, email, memory, sourceTaskId]
+  );
+  return result.rows[0];
+}
+
+async function deleteUserMemory(id, email) {
+  await pool.query(
+    `DELETE FROM user_memories WHERE id = $1 AND LOWER(email) = LOWER($2)`,
+    [id, email]
+  );
+}
+
+async function clearUserMemories(email) {
+  await pool.query(
+    `DELETE FROM user_memories WHERE LOWER(email) = LOWER($1)`,
+    [email]
+  );
+}
+
+// =============================================
 // Exports
 // =============================================
 
@@ -538,4 +655,15 @@ module.exports = {
   addSharedTask,
   removeSharedTask,
   deleteSharedTasksByEmail,
+  // Notifications
+  getNotifications,
+  getUnreadNotificationCount,
+  addNotification,
+  markNotificationRead,
+  markAllNotificationsRead,
+  // User Memories
+  getUserMemories,
+  addUserMemory,
+  deleteUserMemory,
+  clearUserMemories,
 };

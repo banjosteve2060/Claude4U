@@ -204,6 +204,24 @@ export function useCollaboration(user) {
     return () => {};
   }, [socket]);
 
+  // Subscribe to new notification events
+  const onNotification = useCallback((callback) => {
+    if (socket) {
+      socket.on('notification:new', callback);
+      return () => socket.off('notification:new', callback);
+    }
+    return () => {};
+  }, [socket]);
+
+  // Subscribe to initial unread notification count
+  const onNotificationCount = useCallback((callback) => {
+    if (socket) {
+      socket.on('notification:count', callback);
+      return () => socket.off('notification:count', callback);
+    }
+    return () => {};
+  }, [socket]);
+
   // Get typing users for a task
   const getTypingUsers = useCallback((taskId) => {
     return Object.values(typingUsers[taskId] || {});
@@ -227,6 +245,8 @@ export function useCollaboration(user) {
     onTaskMessages,
     onTaskShared,
     onTaskUnshared,
+    onNotification,
+    onNotificationCount,
     getTypingUsers,
     isCollaboratorOnline,
   };
@@ -327,6 +347,69 @@ export const collaborationAPI = {
     const response = await fetch(`${BACKEND_URL}/api/users/${encodeURIComponent(email)}/shared-tasks`);
     if (!response.ok) {
       throw new Error('Failed to get shared tasks');
+    }
+    return response.json();
+  },
+
+  // ============ NOTIFICATION API ============
+
+  // Get notifications for a user
+  async getNotifications(email, limit = 50) {
+    const response = await fetch(`${BACKEND_URL}/api/users/${encodeURIComponent(email)}/notifications?limit=${limit}`);
+    if (!response.ok) {
+      throw new Error('Failed to get notifications');
+    }
+    return response.json();
+  },
+
+  // Mark a single notification as read
+  async markNotificationRead(email, notificationId) {
+    const response = await fetch(`${BACKEND_URL}/api/users/${encodeURIComponent(email)}/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to mark notification read');
+    }
+    return response.json();
+  },
+
+  // Mark all notifications as read
+  async markAllNotificationsRead(email) {
+    const response = await fetch(`${BACKEND_URL}/api/users/${encodeURIComponent(email)}/notifications/mark-all-read`, {
+      method: 'PUT',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to mark all notifications read');
+    }
+    return response.json();
+  },
+
+  // ============ USER MEMORY API ============
+
+  async getUserMemories(email) {
+    const response = await fetch(`${BACKEND_URL}/api/users/${encodeURIComponent(email)}/memories`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch memories');
+    }
+    return response.json();
+  },
+
+  async deleteUserMemory(email, memoryId) {
+    const response = await fetch(`${BACKEND_URL}/api/users/${encodeURIComponent(email)}/memories/${encodeURIComponent(memoryId)}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete memory');
+    }
+    return response.json();
+  },
+
+  async clearUserMemories(email) {
+    const response = await fetch(`${BACKEND_URL}/api/users/${encodeURIComponent(email)}/memories`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to clear memories');
     }
     return response.json();
   },

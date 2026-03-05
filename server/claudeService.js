@@ -102,7 +102,8 @@ class ClaudeService {
     const {
       taskContext = null,
       availableTools = [],
-      userName = 'User'
+      userName = 'User',
+      memories = []
     } = options;
 
     // Build the messages array for Claude
@@ -123,6 +124,14 @@ class ClaudeService {
 
     if (userName) {
       systemPrompt += `\n\nYou are helping: ${userName}`;
+    }
+
+    // Add remembered facts about the user
+    if (memories.length > 0) {
+      systemPrompt += `\n\n## Things you remember about this user\n`;
+      memories.forEach(m => {
+        systemPrompt += `- ${m.memory}\n`;
+      });
     }
 
     // Add available MCP tools to context

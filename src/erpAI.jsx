@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FolderOpen, ChevronRight, ChevronDown, CheckCircle2, Circle, Clock, Plus, Settings, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Send, Wrench, Sparkles, FileText, Image, LogOut, ChevronUp, X, MoreVertical, SplitSquareHorizontal, Maximize2, Share2, Users, Wifi, WifiOff, Loader2, Menu, Mail, Lock, AlertCircle, Trash2, Pencil, FolderEdit, Bell, UserMinus, UserCog, ArrowLeft, RefreshCw, CheckCircle, Sun, Moon, Palette, Upload, RotateCcw, Plug, Power, Zap, Terminal, Globe, Database, MessageSquare, Github, Pin, HelpCircle, BarChart3, TrendingUp, TrendingDown } from 'lucide-react';
+import { Folder, FolderOpen, ChevronRight, ChevronDown, CheckCircle2, Circle, Clock, Plus, Settings, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Send, Wrench, Sparkles, FileText, Image, LogOut, ChevronUp, X, MoreVertical, SplitSquareHorizontal, Maximize2, Share2, Users, Wifi, WifiOff, Loader2, Menu, Mail, Lock, AlertCircle, Trash2, Pencil, FolderEdit, Bell, UserMinus, UserCog, ArrowLeft, RefreshCw, CheckCircle, Sun, Moon, Palette, Upload, RotateCcw, Plug, Power, Zap, Terminal, Globe, Database, MessageSquare, Github, Pin, HelpCircle, BarChart3, TrendingUp, TrendingDown, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import useCollaboration, { collaborationAPI } from './useCollaboration';
 import Onboarding from './Onboarding';
@@ -43,6 +43,26 @@ const PSO_ROLES = [
   { id: 'team_lead', name: 'Team Lead', description: 'Leads consulting teams' },
   { id: 'practice_manager', name: 'Practice Manager', description: 'Manages PSO practice area' },
   { id: 'admin', name: 'Administrator', description: 'System administrator' }
+];
+
+// Pre-built prompt templates for PSO workflows
+const PROMPT_TEMPLATES = [
+  { category: 'Timesheets', name: 'Log hours', prompt: 'Help me log my hours for this week. I worked on...' },
+  { category: 'Timesheets', name: 'Missing timesheet', prompt: 'I have missing timesheets. Can you help me catch up?' },
+  { category: 'Absences', name: 'Book leave', prompt: 'I want to book annual leave from [date] to [date]' },
+  { category: 'Absences', name: 'Check balance', prompt: 'What is my current leave balance?' },
+  { category: 'Expenses', name: 'Submit claim', prompt: 'I need to submit an expense claim for...' },
+  { category: 'Expenses', name: 'Policy check', prompt: 'What is the expense policy for travel and accommodation?' },
+  { category: 'Projects', name: 'Status update', prompt: 'Give me a status update on the current project including risks and milestones' },
+  { category: 'Projects', name: 'Resource plan', prompt: 'Help me create a resource plan for the next quarter' },
+  { category: 'Financials', name: 'Margin analysis', prompt: 'Analyse the project margins and identify any projects below 30% gross margin' },
+  { category: 'Financials', name: 'Revenue forecast', prompt: 'Show me a revenue forecast for the next 3 months with pipeline breakdown' },
+  { category: 'Financials', name: 'Budget variance', prompt: 'Show me budget vs actuals variance for all active projects' },
+  { category: 'Financials', name: 'Utilisation report', prompt: 'Show me the team utilisation rates for this month compared to the 80% target' },
+  { category: 'General', name: 'Explain process', prompt: 'Explain the process for...' },
+  { category: 'General', name: 'Compare options', prompt: 'Help me compare these options: [option 1] vs [option 2]' },
+  { category: 'General', name: 'Draft email', prompt: 'Help me draft a professional email about...' },
+  { category: 'General', name: 'Meeting prep', prompt: 'Help me prepare for a meeting about...' },
 ];
 
 // Storage key for global app settings (admin-controlled)
@@ -1209,7 +1229,7 @@ const ChartRenderer = ({ chartData, darkMode, themeHex }) => {
 };
 
 // Message bubble component
-const Message = ({ content, isUser, timestamp, userName, userEmail, currentUserEmail, onPinMessage, darkMode, themeHex }) => {
+const Message = ({ content, isUser, timestamp, userName, userEmail, currentUserEmail, onPinMessage, onSpeakText, onStopSpeaking, isSpeakingGlobal, darkMode, themeHex }) => {
   const isCurrentUser = userEmail ? userEmail === currentUserEmail : isUser;
   const isAI = !userEmail || userEmail === 'ava@unit4.com';
   const isCollaborator = !isCurrentUser && !isAI;
@@ -1261,21 +1281,42 @@ const Message = ({ content, isUser, timestamp, userName, userEmail, currentUserE
             {timestamp}
           </span>
 
-          {/* Pin button - only show for Ava's messages on hover */}
-          {isAI && onPinMessage && (showPinButton || isPinned) && (
-            <button
-              onClick={handlePin}
-              title={isPinned ? 'Pinned to Notepad!' : 'Pin to Notepad'}
-              className={`absolute -right-2 -top-2 p-1.5 rounded-full shadow-md transition-all transform hover:scale-110 ${
-                isPinned
-                  ? 'bg-green-500 text-white'
-                  : darkMode
-                    ? 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                    : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-              }`}
-            >
-              {isPinned ? <CheckCircle size={14} /> : <Pin size={14} />}
-            </button>
+          {/* Action buttons - only show for Ava's messages on hover */}
+          {isAI && (showPinButton || isPinned) && (
+            <div className="absolute -right-2 -top-2 flex gap-1">
+              {/* Speaker button */}
+              {onSpeakText && (
+                <button
+                  onClick={() => isSpeakingGlobal ? onStopSpeaking() : onSpeakText(content)}
+                  title={isSpeakingGlobal ? 'Stop speaking' : 'Read aloud'}
+                  className={`p-1.5 rounded-full shadow-md transition-all transform hover:scale-110 ${
+                    isSpeakingGlobal
+                      ? 'bg-blue-500 text-white'
+                      : darkMode
+                        ? 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  {isSpeakingGlobal ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                </button>
+              )}
+              {/* Pin button */}
+              {onPinMessage && (
+                <button
+                  onClick={handlePin}
+                  title={isPinned ? 'Pinned to Notepad!' : 'Pin to Notepad'}
+                  className={`p-1.5 rounded-full shadow-md transition-all transform hover:scale-110 ${
+                    isPinned
+                      ? 'bg-green-500 text-white'
+                      : darkMode
+                        ? 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  }`}
+                >
+                  {isPinned ? <CheckCircle size={14} /> : <Pin size={14} />}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1477,6 +1518,13 @@ export default function ErpAI() {
   // Unread tasks state - tracks tasks with unread messages from others or Ava
   const [unreadTasks, setUnreadTasks] = useState({});
 
+  // Notification state
+  const [notifications, setNotifications] = useState([]);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const notifPanelRef = useRef(null);
+  const notifBellRef = useRef(null);
+
   // Backend sync state - 'connected' | 'syncing' | 'disconnected'
   const [syncStatus, setSyncStatus] = useState('disconnected');
   const [lastSyncTime, setLastSyncTime] = useState(null);
@@ -1495,6 +1543,20 @@ export default function ErpAI() {
   const [newActionPrompt, setNewActionPrompt] = useState('');
   const [editingActionIndex, setEditingActionIndex] = useState(null);
 
+  // Voice mode state
+  const [isListening, setIsListening] = useState(false);
+  const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speechRecognitionRef = useRef(null);
+
+  // Prompt template state
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+  const [templateFilter, setTemplateFilter] = useState('All');
+
+  // User memory state
+  const [userMemories, setUserMemories] = useState([]);
+  const [showMemoryPanel, setShowMemoryPanel] = useState(false);
+
   // Real-time collaboration hook (uses currentUser from auth state)
   const {
     isConnected,
@@ -1508,6 +1570,8 @@ export default function ErpAI() {
     onTaskMessages,
     onTaskShared,
     onTaskUnshared,
+    onNotification,
+    onNotificationCount,
     getTypingUsers,
     isCollaboratorOnline,
   } = useCollaboration(currentUser || { email: '', name: '' });
@@ -1559,6 +1623,17 @@ export default function ErpAI() {
       applyUserData(cachedData, user.name);
       setIsDataLoaded(true);
       setIsLoggedIn(true);
+
+      // Load notifications
+      collaborationAPI.getNotifications(user.email).then(notifData => {
+        setNotifications(notifData.notifications || []);
+        setUnreadNotifCount(notifData.unreadCount || 0);
+      }).catch(err => console.error('Failed to load notifications:', err));
+
+      // Load user memories
+      collaborationAPI.getUserMemories(user.email).then(memData => {
+        setUserMemories(memData.memories || []);
+      }).catch(err => console.error('Failed to load memories:', err));
 
       // Background sync: Fetch latest from backend and merge if newer
       collaborationAPI.getUserData(user.email)
@@ -1640,6 +1715,15 @@ export default function ErpAI() {
 
         // Save initial data for new user on backend
         await collaborationAPI.saveUserData(user.email, defaultData);
+      }
+
+      // Load notifications
+      try {
+        const notifData = await collaborationAPI.getNotifications(user.email);
+        setNotifications(notifData.notifications || []);
+        setUnreadNotifCount(notifData.unreadCount || 0);
+      } catch (notifErr) {
+        console.error('Failed to load notifications:', notifErr);
       }
 
       setIsDataLoaded(true);
@@ -1872,6 +1956,9 @@ export default function ErpAI() {
     setActiveTask(null);
     setExpandedFolders([]);
     setUnreadTasks({});
+    setNotifications([]);
+    setUnreadNotifCount(0);
+    setShowNotifPanel(false);
     setRealtimeMessages({});
     setTypingIndicators({});
     setSplitViewTask(null);
@@ -2079,8 +2166,10 @@ export default function ErpAI() {
   // Refs to access current values in callbacks without causing re-subscriptions
   const activeTaskRef = useRef(activeTask);
   const currentUserRef = useRef(currentUser);
+  const voiceModeRef = useRef(voiceModeEnabled);
   useEffect(() => { activeTaskRef.current = activeTask; }, [activeTask]);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { voiceModeRef.current = voiceModeEnabled; }, [voiceModeEnabled]);
 
   // Effect: Subscribe to real-time messages
   useEffect(() => {
@@ -2110,6 +2199,11 @@ export default function ErpAI() {
           setIsAvaProcessing(false);
           setAvaProcessingSteps([]);
         }, 500);
+
+        // Auto-read Ava's response if voice mode is enabled
+        if (voiceModeRef.current) {
+          speakText(message.content);
+        }
       }
 
       // Mark task as unread if message is from someone else (or Ava) and task is not active
@@ -2200,6 +2294,62 @@ export default function ErpAI() {
       unsubTaskUnshared();
     };
   }, [onTaskShared, onTaskUnshared]);
+
+  // Effect: Subscribe to real-time notifications
+  useEffect(() => {
+    const unsubNotif = onNotification((notification) => {
+      setNotifications(prev => [notification, ...prev]);
+      setUnreadNotifCount(prev => prev + 1);
+    });
+
+    const unsubCount = onNotificationCount(({ unreadCount }) => {
+      setUnreadNotifCount(unreadCount);
+    });
+
+    return () => {
+      unsubNotif();
+      unsubCount();
+    };
+  }, [onNotification, onNotificationCount]);
+
+  // Effect: Close notification panel when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showNotifPanel &&
+          notifPanelRef.current && !notifPanelRef.current.contains(e.target) &&
+          notifBellRef.current && !notifBellRef.current.contains(e.target)) {
+        setShowNotifPanel(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showNotifPanel]);
+
+  // Effect: Initialize Web Speech API for voice input
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-GB';
+
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map(result => result[0].transcript)
+          .join('');
+        setInputValue(transcript);
+        if (event.results[event.results.length - 1].isFinal) {
+          setIsListening(false);
+        }
+      };
+
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = () => setIsListening(false);
+
+      speechRecognitionRef.current = recognition;
+    }
+  }, []);
 
   // Effect: Update typing indicators
   useEffect(() => {
@@ -2572,6 +2722,81 @@ export default function ErpAI() {
       }, 100);
     }
   };
+
+  // Handle clicking a notification - mark read and navigate to task
+  const handleNotificationClick = async (notification) => {
+    if (!notification.isRead) {
+      try {
+        await collaborationAPI.markNotificationRead(currentUser.email, notification.id);
+        setNotifications(prev => prev.map(n =>
+          n.id === notification.id ? { ...n, isRead: true } : n
+        ));
+        setUnreadNotifCount(prev => Math.max(0, prev - 1));
+      } catch (err) {
+        console.error('Failed to mark notification read:', err);
+      }
+    }
+
+    // Navigate to the task
+    const taskId = notification.taskId;
+    let taskObj = null;
+    for (const folder of folders) {
+      taskObj = folder.tasks.find(t => t.id === taskId);
+      if (taskObj) break;
+    }
+    if (taskObj) {
+      handleTaskClick(taskObj);
+    } else {
+      // Task may be in shared folder but not yet loaded - open it anyway
+      handleTaskClick({ id: taskId, title: notification.taskTitle, status: 'pending' });
+    }
+
+    setShowNotifPanel(false);
+  };
+
+  // Mark all notifications as read
+  const handleMarkAllNotifsRead = async () => {
+    try {
+      await collaborationAPI.markAllNotificationsRead(currentUser.email);
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setUnreadNotifCount(0);
+    } catch (err) {
+      console.error('Failed to mark all notifications read:', err);
+    }
+  };
+
+  // Voice input: toggle listening
+  const toggleListening = () => {
+    if (!speechRecognitionRef.current) return;
+    if (isListening) {
+      speechRecognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      setInputValue('');
+      speechRecognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
+
+  // Voice output: speak text aloud
+  const speakText = useCallback((text) => {
+    const cleanText = text.replace(/```chart[\s\S]*?```/g, '').replace(/[*#_`]/g, '').trim();
+    if (!cleanText) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  // Voice output: stop speaking
+  const stopSpeaking = useCallback(() => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  }, []);
 
   // Handle sharing a task
   const handleShareTask = (task) => {
@@ -3172,6 +3397,12 @@ export default function ErpAI() {
                       setTempLogoUrl(appSettings.logoUrl);
                       setShowAdminSettings(true);
                       setUserMenuOpen(false);
+                      // Refresh memories when opening settings
+                      if (currentUser?.email) {
+                        collaborationAPI.getUserMemories(currentUser.email).then(memData => {
+                          setUserMemories(memData.memories || []);
+                        }).catch(() => {});
+                      }
                       if (isMobile) setMobileMenuOpen(false);
                     }}
                     className={`w-full flex items-center gap-2 px-3 py-3 transition-colors touch-manipulation ${darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-600 hover:bg-gray-100'}`}
@@ -3305,6 +3536,117 @@ export default function ErpAI() {
                 </>
               )}
             </div>
+
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                ref={notifBellRef}
+                onClick={() => setShowNotifPanel(!showNotifPanel)}
+                className={`relative p-2 rounded-lg transition-colors ${
+                  showNotifPanel
+                    ? darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'
+                    : darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'
+                }`}
+                aria-label="Notifications"
+                title="Notifications"
+              >
+                <Bell size={18} />
+                {unreadNotifCount > 0 && (
+                  <span className={`absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 ${THEME_COLORS[appSettings.themeColor].primary} text-white text-[10px] font-bold rounded-full animate-pulse`}>
+                    {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* Notification Dropdown Panel */}
+            {showNotifPanel && createPortal(
+              <>
+                {/* Backdrop */}
+                <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setShowNotifPanel(false)} />
+                {/* Panel */}
+                <div
+                  ref={notifPanelRef}
+                  className={`fixed rounded-lg shadow-xl border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
+                  style={{
+                    top: notifBellRef.current ? notifBellRef.current.getBoundingClientRect().bottom + 8 : 60,
+                    right: 16,
+                    width: isMobile ? 'calc(100vw - 32px)' : '380px',
+                    maxHeight: '480px',
+                    zIndex: 9999
+                  }}
+                >
+                  {/* Header */}
+                  <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h3 className={`text-sm font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+                      Notifications
+                      {unreadNotifCount > 0 && (
+                        <span className={`ml-2 text-xs font-medium ${THEME_COLORS[appSettings.themeColor].primaryText}`}>
+                          {unreadNotifCount} new
+                        </span>
+                      )}
+                    </h3>
+                    {unreadNotifCount > 0 && (
+                      <button
+                        onClick={handleMarkAllNotifsRead}
+                        className={`text-xs font-medium ${THEME_COLORS[appSettings.themeColor].primaryText} hover:underline`}
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Notification list */}
+                  <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
+                    {notifications.length === 0 ? (
+                      <div className={`px-4 py-8 text-center text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        No notifications yet
+                      </div>
+                    ) : (
+                      notifications.map(notif => (
+                        <button
+                          key={notif.id}
+                          onClick={() => handleNotificationClick(notif)}
+                          className={`w-full text-left px-4 py-3 border-b transition-colors ${
+                            darkMode
+                              ? `border-gray-700 hover:bg-gray-700 ${!notif.isRead ? 'bg-gray-900/30' : ''}`
+                              : `border-gray-100 hover:bg-gray-50 ${!notif.isRead ? 'bg-blue-50/50' : ''}`
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Icon */}
+                            <div className={`mt-0.5 p-1.5 rounded-full flex-shrink-0 ${
+                              notif.type === 'task_shared'
+                                ? darkMode ? 'bg-green-900/50 text-green-400' : 'bg-green-100 text-green-600'
+                                : darkMode ? 'bg-blue-900/50 text-blue-400' : 'bg-blue-100 text-blue-600'
+                            }`}>
+                              {notif.type === 'task_shared' ? <Share2 size={14} /> : <MessageSquare size={14} />}
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm ${!notif.isRead ? (darkMode ? 'text-gray-200 font-medium' : 'text-gray-800 font-medium') : (darkMode ? 'text-gray-400' : 'text-gray-500')}`}>
+                                <span className="font-semibold">{notif.fromName}</span>{' '}
+                                {notif.message}
+                              </p>
+                              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                {new Date(notif.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+
+                            {/* Unread dot */}
+                            {!notif.isRead && (
+                              <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${THEME_COLORS[appSettings.themeColor].primary}`} />
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>,
+              document.body
+            )}
 
             {/* Dark Mode Toggle */}
             <button
@@ -3658,6 +4000,9 @@ export default function ErpAI() {
                     userEmail={msg.userEmail}
                     currentUserEmail={currentUser?.email}
                     onPinMessage={handlePinMessage}
+                    onSpeakText={speakText}
+                    onStopSpeaking={stopSpeaking}
+                    isSpeakingGlobal={isSpeaking}
                     darkMode={darkMode}
                     themeHex={THEME_COLORS[appSettings.themeColor].hex}
                   />
@@ -3770,6 +4115,9 @@ export default function ErpAI() {
                     userEmail={msg.userEmail}
                     currentUserEmail={currentUser?.email}
                     onPinMessage={handlePinMessage}
+                    onSpeakText={speakText}
+                    onStopSpeaking={stopSpeaking}
+                    isSpeakingGlobal={isSpeaking}
                     darkMode={darkMode}
                     themeHex={THEME_COLORS[appSettings.themeColor].hex}
                   />
@@ -3810,6 +4158,20 @@ export default function ErpAI() {
                 className={`flex-1 resize-none bg-transparent border-none outline-none text-sm min-h-[24px] max-h-32 ${darkMode ? 'text-gray-100 placeholder-gray-500' : 'text-gray-800 placeholder-gray-400'}`}
                 rows={1}
               />
+              {/* Voice input button */}
+              {speechRecognitionRef.current && (
+                <button
+                  onClick={toggleListening}
+                  className={`p-2.5 sm:p-2 rounded-xl transition-colors touch-manipulation ${
+                    isListening
+                      ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+                      : darkMode ? 'bg-gray-600 hover:bg-gray-500 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-600'
+                  }`}
+                  title={isListening ? 'Stop recording' : 'Voice input'}
+                >
+                  {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
+              )}
               <button
                 onClick={handleSend}
                 disabled={!inputValue.trim()}
@@ -3832,9 +4194,29 @@ export default function ErpAI() {
                   </>
                 )}
               </div>
-              <p className="text-[10px] sm:text-xs text-gray-400 hidden sm:block">
-                Ava can make mistakes. Please verify important information.
-              </p>
+              <div className="flex items-center gap-3">
+                {/* Voice mode toggle */}
+                <button
+                  onClick={() => {
+                    setVoiceModeEnabled(!voiceModeEnabled);
+                    if (voiceModeEnabled) stopSpeaking();
+                  }}
+                  className={`flex items-center gap-1 transition-colors ${voiceModeEnabled ? '' : 'opacity-60 hover:opacity-100'}`}
+                  title={voiceModeEnabled ? 'Disable voice responses' : 'Enable voice responses'}
+                >
+                  {voiceModeEnabled ? (
+                    <Volume2 size={10} className="text-green-500 sm:w-3 sm:h-3" />
+                  ) : (
+                    <VolumeX size={10} className="text-gray-400 sm:w-3 sm:h-3" />
+                  )}
+                  <span className={`text-[10px] sm:text-xs ${voiceModeEnabled ? 'text-green-600' : 'text-gray-400'}`}>
+                    {voiceModeEnabled ? 'Voice on' : 'Voice off'}
+                  </span>
+                </button>
+                <p className="text-[10px] sm:text-xs text-gray-400 hidden sm:block">
+                  Ava can make mistakes. Please verify important information.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -3977,6 +4359,58 @@ export default function ErpAI() {
         </div>
 
         {/* Quick Actions */}
+        {/* Prompt Templates */}
+        <div className={`p-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Templates</span>
+            <button
+              onClick={() => setShowTemplateLibrary(!showTemplateLibrary)}
+              className={`text-xs ${THEME_COLORS[appSettings.themeColor].primaryText} hover:underline`}
+            >
+              {showTemplateLibrary ? 'Collapse' : 'Browse all'}
+            </button>
+          </div>
+
+          {/* Category filter pills */}
+          {showTemplateLibrary && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {['All', ...new Set(PROMPT_TEMPLATES.map(t => t.category))].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setTemplateFilter(cat)}
+                  className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
+                    templateFilter === cat
+                      ? `${THEME_COLORS[appSettings.themeColor].primary} text-white border-transparent`
+                      : darkMode ? 'border-gray-600 text-gray-400 hover:border-gray-500' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Template grid */}
+          <div className="grid grid-cols-2 gap-1.5">
+            {(showTemplateLibrary
+              ? PROMPT_TEMPLATES.filter(t => templateFilter === 'All' || t.category === templateFilter)
+              : PROMPT_TEMPLATES.slice(0, 4)
+            ).map((template, idx) => (
+              <button
+                key={idx}
+                onClick={() => { if (activeTask) setInputValue(template.prompt); }}
+                className={`p-2 text-left text-[11px] border rounded-lg transition-colors ${
+                  darkMode ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-white border-gray-200 hover:bg-gray-50'
+                }`}
+                title={template.prompt}
+              >
+                <span className={`block text-[9px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{template.category}</span>
+                <span className="block truncate">{template.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div data-tour="quick-actions" className={`p-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between mb-2 px-1">
             <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Quick Actions</span>
@@ -3999,7 +4433,21 @@ export default function ErpAI() {
                 key={action}
                 onClick={() => {
                   if (activeTask) {
-                    setInputValue(`Please ${action.toLowerCase()} this for me`);
+                    if (action === 'Summarize') {
+                      const allMessages = getTaskMessages(activeTask);
+                      if (allMessages.length === 0) {
+                        setInputValue('There are no messages to summarize yet.');
+                        return;
+                      }
+                      const messageText = allMessages.map(m =>
+                        `${m.isUser ? (m.userName || 'User') : 'Ava'}: ${m.content}`
+                      ).join('\n');
+                      const summarisePrompt = `Please provide a structured summary of our conversation in this task. Include:\n- **Key Topics Discussed**: Main subjects covered\n- **Decisions Made**: Any conclusions or agreements\n- **Action Items**: Things to follow up on\n- **Important Data Points**: Key numbers or facts mentioned\n\nHere is the full conversation:\n${messageText}`;
+                      setInputValue(summarisePrompt);
+                      setTimeout(() => handleSend(), 50);
+                    } else {
+                      setInputValue(`Please ${action.toLowerCase()} this for me`);
+                    }
                   }
                 }}
                 className={`p-2 text-xs border rounded-lg transition-colors ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-300 hover:border-' + appSettings.themeColor + '-500 hover:bg-gray-600' : 'bg-white border-gray-200 hover:border-' + appSettings.themeColor + '-300 hover:bg-' + appSettings.themeColor + '-50'}`}
@@ -4754,6 +5202,74 @@ export default function ErpAI() {
                     </p>
                   </div>
                 </div>
+              </div>
+
+              {/* Ava's Memory */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Ava's Memory
+                  </label>
+                  <button
+                    onClick={() => setShowMemoryPanel(!showMemoryPanel)}
+                    className={`text-xs ${THEME_COLORS[appSettings.themeColor].primaryText} hover:underline`}
+                  >
+                    {showMemoryPanel ? 'Hide' : `Show (${userMemories.length})`}
+                  </button>
+                </div>
+                <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Ava automatically remembers key facts from your conversations to provide better context across all tasks.
+                </p>
+                {showMemoryPanel && (
+                  <div className={`p-3 border rounded-lg ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'}`}>
+                    {userMemories.length === 0 ? (
+                      <p className={`text-xs text-center py-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        No memories yet. Ava will learn about you as you chat.
+                      </p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {userMemories.map((mem) => (
+                          <div key={mem.id} className={`flex items-start justify-between gap-2 p-2 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-white border border-gray-100'}`}>
+                            <span className={`text-xs flex-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{mem.memory}</span>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await collaborationAPI.deleteUserMemory(currentUser.email, mem.id);
+                                  setUserMemories(prev => prev.filter(m => m.id !== mem.id));
+                                } catch (err) {
+                                  console.error('Failed to delete memory:', err);
+                                }
+                              }}
+                              className={`p-1 rounded hover:bg-red-100 ${darkMode ? 'text-gray-400 hover:text-red-400 hover:bg-red-900/30' : 'text-gray-400 hover:text-red-500'}`}
+                              title="Delete this memory"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {userMemories.length > 0 && (
+                      <button
+                        onClick={async () => {
+                          if (confirm('Clear all of Ava\'s memories about you?')) {
+                            try {
+                              await collaborationAPI.clearUserMemories(currentUser.email);
+                              setUserMemories([]);
+                            } catch (err) {
+                              console.error('Failed to clear memories:', err);
+                            }
+                          }
+                        }}
+                        className={`mt-2 w-full py-1.5 text-xs rounded-lg border transition-colors ${
+                          darkMode ? 'border-gray-500 text-gray-400 hover:bg-red-900/30 hover:text-red-400 hover:border-red-800' : 'border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200'
+                        }`}
+                      >
+                        Clear all memories
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

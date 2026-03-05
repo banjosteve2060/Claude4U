@@ -27,6 +27,15 @@ const users = new Map();
 // Collaborator online/socket state — taskId -> Map<email, { socketId, isOnline }>
 const collaboratorSockets = new Map();
 
+// Throttle new_message notifications — key: `${email}:${taskId}`, value: timestamp
+const messageNotifThrottle = new Map();
+const MESSAGE_NOTIF_COOLDOWN_MS = 30000; // 30 seconds
+
+// Memory extraction counter — only run extraction every 5th user message per task
+const memoryExtractionCounter = new Map();
+const MEMORY_EXTRACTION_INTERVAL = 5;
+const MAX_MEMORIES_PER_USER = 20;
+
 // Admin user email (must match frontend ADMIN_EMAIL)
 const ADMIN_EMAIL = db.ADMIN_EMAIL;
 
@@ -574,6 +583,40 @@ app.post('/api/tasks/:taskId/collaborators', async (req, res) => {
           io.to(socketId).emit('task:shared', sharedTaskInfo);
         }
       }
+
+      // Create a persistent notification for the recipient
+      try {
+        const notifId = uuidv4();
+        const taskTitleForNotif = sharedTaskResult.title || 'a task';
+        const notification = await db.addNotification(
+          notifId,
+          email,
+          'task_shared',
+          taskId,
+          taskTitleForNotif,
+          invitedByName || invitedBy?.split('@')[0] || 'Someone',
+          invitedBy || '',
+          `shared "${taskTitleForNotif}" with you`
+        );
+        // Emit real-time notification to recipient's socket(s)
+        for (const [socketId, user] of users.entries()) {
+          if (user.email?.toLowerCase() === email.toLowerCase()) {
+            io.to(socketId).emit('notification:new', {
+              id: notification.id,
+              type: 'task_shared',
+              taskId,
+              taskTitle: notification.task_title,
+              fromName: notification.from_name,
+              fromEmail: notification.from_email,
+              message: notification.message,
+              isRead: false,
+              createdAt: notification.created_at
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.error('Error creating task-shared notification:', notifErr);
+      }
     }
 
     const responseCollaborator = {
@@ -692,6 +735,106 @@ app.get('/api/tasks/:taskId/share-link', async (req, res) => {
   }
 });
 
+// ============ NOTIFICATION ENDPOINTS ============
+
+// Get notifications for a user
+app.get('/api/users/:email/notifications', async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const limit = parseInt(req.query.limit) || 50;
+    const rows = await db.getNotifications(email, limit);
+    const unreadCount = await db.getUnreadNotificationCount(email);
+    res.json({
+      notifications: rows.map(r => ({
+        id: r.id,
+        type: r.type,
+        taskId: r.task_id,
+        taskTitle: r.task_title,
+        fromName: r.from_name,
+        fromEmail: r.from_email,
+        message: r.message,
+        isRead: r.is_read,
+        createdAt: r.created_at
+      })),
+      unreadCount
+    });
+  } catch (err) {
+    console.error('Error getting notifications:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Mark all notifications as read (must be before :notificationId route)
+app.put('/api/users/:email/notifications/mark-all-read', async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    await db.markAllNotificationsRead(email);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error marking all notifications read:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Mark a single notification as read
+app.put('/api/users/:email/notifications/:notificationId/read', async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const { notificationId } = req.params;
+    await db.markNotificationRead(notificationId, email);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error marking notification read:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============ USER MEMORY ENDPOINTS ============
+
+// GET /api/users/:email/memories — list user memories
+app.get('/api/users/:email/memories', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const memories = await db.getUserMemories(email, 50);
+    res.json({
+      ok: true,
+      memories: memories.map(m => ({
+        id: m.id,
+        memory: m.memory,
+        sourceTaskId: m.source_task_id,
+        createdAt: m.created_at
+      }))
+    });
+  } catch (err) {
+    console.error('Error fetching memories:', err);
+    res.status(500).json({ ok: false, error: 'Failed to fetch memories' });
+  }
+});
+
+// DELETE /api/users/:email/memories — clear all memories
+app.delete('/api/users/:email/memories', async (req, res) => {
+  try {
+    const { email } = req.params;
+    await db.clearUserMemories(email);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error clearing memories:', err);
+    res.status(500).json({ ok: false, error: 'Failed to clear memories' });
+  }
+});
+
+// DELETE /api/users/:email/memories/:memoryId — delete one memory
+app.delete('/api/users/:email/memories/:memoryId', async (req, res) => {
+  try {
+    const { email, memoryId } = req.params;
+    await db.deleteUserMemory(memoryId, email);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting memory:', err);
+    res.status(500).json({ ok: false, error: 'Failed to delete memory' });
+  }
+});
+
 // ============ SOCKET.IO CONNECTION HANDLING ============
 
 io.on('connection', (socket) => {
@@ -717,6 +860,14 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('Error fetching invitations:', err);
+    }
+
+    // Send unread notification count
+    try {
+      const unreadCount = await db.getUnreadNotificationCount(email);
+      socket.emit('notification:count', { unreadCount });
+    } catch (err) {
+      console.error('Error fetching notification count:', err);
     }
 
     console.log(`User identified: ${email}`);
@@ -824,6 +975,71 @@ io.on('connection', (socket) => {
     // Broadcast to all clients in the task room
     io.to(`task:${taskId}`).emit('message:new', { taskId, message });
 
+    // Create notifications for collaborators NOT currently viewing this task
+    if (isUser && currentUser) {
+      try {
+        const collaborators = await db.getCollaborators(taskId);
+        const task = await db.getTask(taskId);
+        const taskTitleForNotif = task?.title || 'Untitled Task';
+
+        for (const collab of collaborators) {
+          // Skip the sender
+          if (collab.email.toLowerCase() === currentUser.email.toLowerCase()) continue;
+
+          // Throttle: max 1 notification per 30s per user per task
+          const throttleKey = `${collab.email.toLowerCase()}:${taskId}`;
+          const lastNotif = messageNotifThrottle.get(throttleKey) || 0;
+          if (Date.now() - lastNotif < MESSAGE_NOTIF_COOLDOWN_MS) continue;
+
+          // Check if this user has any socket in the task room
+          let isInRoom = false;
+          for (const [sid, u] of users.entries()) {
+            if (u.email?.toLowerCase() === collab.email.toLowerCase()) {
+              const sock = io.sockets.sockets.get(sid);
+              if (sock && sock.rooms.has(`task:${taskId}`)) {
+                isInRoom = true;
+                break;
+              }
+            }
+          }
+
+          if (!isInRoom) {
+            messageNotifThrottle.set(throttleKey, Date.now());
+            const notifId = uuidv4();
+            const notification = await db.addNotification(
+              notifId,
+              collab.email,
+              'new_message',
+              taskId,
+              taskTitleForNotif,
+              currentUser.name,
+              currentUser.email,
+              `sent a message in "${taskTitleForNotif}"`
+            );
+
+            // Send real-time notification to this user if online
+            for (const [sid, u] of users.entries()) {
+              if (u.email?.toLowerCase() === collab.email.toLowerCase()) {
+                io.to(sid).emit('notification:new', {
+                  id: notification.id,
+                  type: 'new_message',
+                  taskId,
+                  taskTitle: taskTitleForNotif,
+                  fromName: currentUser.name,
+                  fromEmail: currentUser.email,
+                  message: notification.message,
+                  isRead: false,
+                  createdAt: notification.created_at
+                });
+              }
+            }
+          }
+        }
+      } catch (notifErr) {
+        console.error('Error creating message notifications:', notifErr);
+      }
+    }
+
     // Generate Ava's response after a short delay (simulates thinking)
     if (isUser) {
       // Pre-fetch task title for Ava response
@@ -847,11 +1063,13 @@ io.on('connection', (socket) => {
 
         if (claudeService.isConfigured()) {
           try {
-            // Build message history for context
+            // Build message history for context (expand window for summary requests)
+            const isSummaryRequest = content.toLowerCase().includes('summar');
+            const historyLimit = isSummaryRequest ? -50 : -10;
             let recentMessages = [];
             try {
               const history = await db.getTaskMessages(taskId);
-              recentMessages = history.slice(-10).map(m => ({
+              recentMessages = history.slice(historyLimit).map(m => ({
                 content: m.content,
                 isUser: m.is_user
               }));
@@ -861,9 +1079,17 @@ io.on('connection', (socket) => {
             recentMessages.push({ content, isUser: true });
 
             const taskContext = taskTitle ? { title: taskTitle, category: taskTitle } : null;
+
+            // Fetch user memories for context injection
+            let memories = [];
+            try {
+              memories = await db.getUserMemories(currentUser.email, MAX_MEMORIES_PER_USER);
+            } catch (err) { /* ignore memory fetch errors */ }
+
             const response = await claudeService.chat(recentMessages, {
               taskContext,
-              userName: currentUser.name
+              userName: currentUser.name,
+              memories
             });
 
             avaContent = response.content;
@@ -910,6 +1136,46 @@ io.on('connection', (socket) => {
 
         // Broadcast Ava's response
         io.to(`task:${taskId}`).emit('message:new', { taskId, message: avaResponse });
+
+        // Memory extraction — run every Nth user message to avoid excessive API calls
+        if (source === 'claude' && claudeService.isConfigured()) {
+          const counterKey = `${currentUser.email}:${taskId}`;
+          const count = (memoryExtractionCounter.get(counterKey) || 0) + 1;
+          memoryExtractionCounter.set(counterKey, count);
+
+          if (count % MEMORY_EXTRACTION_INTERVAL === 0) {
+            try {
+              const extractionPrompt = `Extract 0-2 key facts worth remembering about this user from this exchange. Return ONLY a JSON array of strings, or [] if nothing notable. Facts should be personal preferences, project names, roles, deadlines, team members, or work patterns. Do NOT include generic information or restate the question.
+
+User said: ${content}
+Assistant replied: ${avaContent.substring(0, 500)}`;
+
+              const extractionResponse = await claudeService.quickResponse(extractionPrompt);
+              const jsonMatch = extractionResponse.content.match(/\[[\s\S]*?\]/);
+              if (jsonMatch) {
+                const facts = JSON.parse(jsonMatch[0]);
+                if (Array.isArray(facts) && facts.length > 0) {
+                  for (const fact of facts.slice(0, 2)) {
+                    if (typeof fact === 'string' && fact.trim().length > 5) {
+                      await db.addUserMemory(uuidv4(), currentUser.email, fact.trim(), taskId);
+                    }
+                  }
+                  // Enforce max memories per user — delete oldest if exceeded
+                  const allMemories = await db.getUserMemories(currentUser.email, 100);
+                  if (allMemories.length > MAX_MEMORIES_PER_USER) {
+                    const toDelete = allMemories.slice(MAX_MEMORIES_PER_USER);
+                    for (const mem of toDelete) {
+                      await db.deleteUserMemory(mem.id, currentUser.email);
+                    }
+                  }
+                  console.log(`[Memory] Extracted ${facts.length} facts for ${currentUser.email}`);
+                }
+              }
+            } catch (memErr) {
+              console.error('[Memory] Extraction error:', memErr.message);
+            }
+          }
+        }
       };
 
       // Small delay before starting (typing indicator feel), then generate
