@@ -153,7 +153,7 @@ class ClaudeService {
     return new Promise((resolve, reject) => {
       const postData = JSON.stringify(requestBody);
 
-      const options = {
+      const reqOptions = {
         hostname: 'api.anthropic.com',
         port: 443,
         path: '/v1/messages',
@@ -166,7 +166,7 @@ class ClaudeService {
         }
       };
 
-      const req = https.request(options, (res) => {
+      const req = https.request(reqOptions, (res) => {
         let data = '';
 
         res.on('data', (chunk) => {

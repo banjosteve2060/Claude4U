@@ -28,13 +28,31 @@ const users = new Map();
 const collaboratorSockets = new Map();
 
 // Throttle new_message notifications — key: `${email}:${taskId}`, value: timestamp
+// Auto-cleanup entries older than cooldown period every 5 minutes
 const messageNotifThrottle = new Map();
 const MESSAGE_NOTIF_COOLDOWN_MS = 30000; // 30 seconds
 
 // Memory extraction counter — only run extraction every 5th user message per task
+// Auto-cleanup entries older than 1 hour every 10 minutes
 const memoryExtractionCounter = new Map();
 const MEMORY_EXTRACTION_INTERVAL = 5;
 const MAX_MEMORIES_PER_USER = 20;
+
+// Reverse lookup: email (lowercase) -> Set<socketId> for O(1) user lookups
+const emailToSockets = new Map();
+
+// Periodic cleanup of stale throttle/counter Map entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, ts] of messageNotifThrottle.entries()) {
+    if (now - ts > MESSAGE_NOTIF_COOLDOWN_MS * 2) messageNotifThrottle.delete(key);
+  }
+}, 5 * 60 * 1000);
+
+setInterval(() => {
+  // Counter entries older than 1hr are stale — reset them
+  if (memoryExtractionCounter.size > 1000) memoryExtractionCounter.clear();
+}, 10 * 60 * 1000);
 
 // Admin user email (must match frontend ADMIN_EMAIL)
 const ADMIN_EMAIL = db.ADMIN_EMAIL;
@@ -848,6 +866,11 @@ io.on('connection', (socket) => {
     currentUser = { email, name, socketId: socket.id };
     users.set(socket.id, currentUser);
 
+    // Maintain reverse email -> socketIds lookup
+    const emailKey = email.toLowerCase();
+    if (!emailToSockets.has(emailKey)) emailToSockets.set(emailKey, new Set());
+    emailToSockets.get(emailKey).add(socket.id);
+
     try {
       // Check for pending invitations
       const userInvitations = await db.getInvitations(email);
@@ -975,12 +998,15 @@ io.on('connection', (socket) => {
     // Broadcast to all clients in the task room
     io.to(`task:${taskId}`).emit('message:new', { taskId, message });
 
+    // Pre-fetch task metadata (reused by notifications and Ava response)
+    let cachedTask = null;
+    try { cachedTask = await db.getTask(taskId); } catch (err) { /* ignore */ }
+
     // Create notifications for collaborators NOT currently viewing this task
     if (isUser && currentUser) {
       try {
         const collaborators = await db.getCollaborators(taskId);
-        const task = await db.getTask(taskId);
-        const taskTitleForNotif = task?.title || 'Untitled Task';
+        const taskTitleForNotif = cachedTask?.title || 'Untitled Task';
 
         for (const collab of collaborators) {
           // Skip the sender
@@ -991,10 +1017,13 @@ io.on('connection', (socket) => {
           const lastNotif = messageNotifThrottle.get(throttleKey) || 0;
           if (Date.now() - lastNotif < MESSAGE_NOTIF_COOLDOWN_MS) continue;
 
-          // Check if this user has any socket in the task room
+          // Check if this user has any socket in the task room (O(1) lookup)
+          const collabEmailKey = collab.email.toLowerCase();
+          const collabSocketIds = emailToSockets.get(collabEmailKey);
           let isInRoom = false;
-          for (const [sid, u] of users.entries()) {
-            if (u.email?.toLowerCase() === collab.email.toLowerCase()) {
+
+          if (collabSocketIds) {
+            for (const sid of collabSocketIds) {
               const sock = io.sockets.sockets.get(sid);
               if (sock && sock.rooms.has(`task:${taskId}`)) {
                 isInRoom = true;
@@ -1017,20 +1046,21 @@ io.on('connection', (socket) => {
               `sent a message in "${taskTitleForNotif}"`
             );
 
-            // Send real-time notification to this user if online
-            for (const [sid, u] of users.entries()) {
-              if (u.email?.toLowerCase() === collab.email.toLowerCase()) {
-                io.to(sid).emit('notification:new', {
-                  id: notification.id,
-                  type: 'new_message',
-                  taskId,
-                  taskTitle: taskTitleForNotif,
-                  fromName: currentUser.name,
-                  fromEmail: currentUser.email,
-                  message: notification.message,
-                  isRead: false,
-                  createdAt: notification.created_at
-                });
+            // Send real-time notification to this user if online (O(1) lookup)
+            if (collabSocketIds) {
+              const notifPayload = {
+                id: notification.id,
+                type: 'new_message',
+                taskId,
+                taskTitle: taskTitleForNotif,
+                fromName: currentUser.name,
+                fromEmail: currentUser.email,
+                message: notification.message,
+                isRead: false,
+                createdAt: notification.created_at
+              };
+              for (const sid of collabSocketIds) {
+                io.to(sid).emit('notification:new', notifPayload);
               }
             }
           }
@@ -1042,12 +1072,7 @@ io.on('connection', (socket) => {
 
     // Generate Ava's response after a short delay (simulates thinking)
     if (isUser) {
-      // Pre-fetch task title for Ava response
-      let taskTitle = '';
-      try {
-        const task = await db.getTask(taskId);
-        taskTitle = task?.title || '';
-      } catch (err) { /* ignore */ }
+      const taskTitle = cachedTask?.title || '';
 
       // Show typing indicator
       io.to(`task:${taskId}`).emit('typing:user', {
@@ -1065,11 +1090,11 @@ io.on('connection', (socket) => {
           try {
             // Build message history for context (expand window for summary requests)
             const isSummaryRequest = content.toLowerCase().includes('summar');
-            const historyLimit = isSummaryRequest ? -50 : -10;
+            const historyLimit = isSummaryRequest ? 50 : 10;
             let recentMessages = [];
             try {
-              const history = await db.getTaskMessages(taskId);
-              recentMessages = history.slice(historyLimit).map(m => ({
+              const history = await db.getRecentTaskMessages(taskId, historyLimit);
+              recentMessages = history.map(m => ({
                 content: m.content,
                 isUser: m.is_user
               }));
@@ -1241,6 +1266,16 @@ Assistant replied: ${avaContent.substring(0, 500)}`;
         }
       }
     });
+
+    // Clean up reverse email lookup
+    if (currentUser?.email) {
+      const emailKey = currentUser.email.toLowerCase();
+      const sockets = emailToSockets.get(emailKey);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) emailToSockets.delete(emailKey);
+      }
+    }
 
     users.delete(socket.id);
   });
@@ -1457,3 +1492,23 @@ async function start() {
 }
 
 start();
+
+// Graceful shutdown
+function shutdown(signal) {
+  console.log(`\n[Server] ${signal} received — shutting down gracefully...`);
+  io.close(() => {
+    console.log('[Server] Socket.IO connections closed');
+    server.close(() => {
+      console.log('[Server] HTTP server closed');
+      db.pool.end(() => {
+        console.log('[Server] Database pool closed');
+        process.exit(0);
+      });
+    });
+  });
+  // Force exit after 10s if graceful shutdown stalls
+  setTimeout(() => { process.exit(1); }, 10000);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

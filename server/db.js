@@ -456,6 +456,16 @@ async function getTaskMessages(taskId) {
   return result.rows;
 }
 
+async function getRecentTaskMessages(taskId, limit = 10) {
+  const result = await pool.query(
+    `SELECT * FROM (
+       SELECT * FROM task_messages WHERE task_id = $1 ORDER BY created_at DESC LIMIT $2
+     ) sub ORDER BY created_at ASC`,
+    [taskId, limit]
+  );
+  return result.rows;
+}
+
 async function addTaskMessage(taskId, id, content, isUser, userId, userName, userEmail, timestamp) {
   const result = await pool.query(
     `INSERT INTO task_messages (id, task_id, content, is_user, user_id, user_name, user_email, timestamp, created_at)
@@ -646,6 +656,7 @@ module.exports = {
   collaboratorExists,
   // Task Messages
   getTaskMessages,
+  getRecentTaskMessages,
   addTaskMessage,
   // Invitations
   getInvitations,

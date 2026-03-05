@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FolderOpen, ChevronRight, ChevronDown, CheckCircle2, Circle, Clock, Plus, Settings, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Send, Wrench, Sparkles, FileText, Image, LogOut, ChevronUp, X, MoreVertical, SplitSquareHorizontal, Maximize2, Share2, Users, Wifi, WifiOff, Loader2, Menu, Mail, Lock, AlertCircle, Trash2, Pencil, FolderEdit, Bell, UserMinus, UserCog, ArrowLeft, RefreshCw, CheckCircle, Sun, Moon, Palette, Upload, RotateCcw, Plug, Power, Zap, Terminal, Globe, Database, MessageSquare, Github, Pin, HelpCircle, BarChart3, TrendingUp, TrendingDown, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { Folder, FolderOpen, ChevronRight, ChevronDown, CheckCircle2, Circle, Clock, Plus, Settings, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Send, Wrench, Sparkles, FileText, Image, LogOut, ChevronUp, X, MoreVertical, SplitSquareHorizontal, Maximize2, Share2, Users, Wifi, WifiOff, Loader2, Menu, Mail, AlertCircle, Trash2, Pencil, FolderEdit, Bell, UserMinus, UserCog, ArrowLeft, RefreshCw, CheckCircle, Sun, Moon, Palette, RotateCcw, Plug, Zap, Terminal, Globe, Database, MessageSquare, Github, Pin, HelpCircle, BarChart3, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import useCollaboration, { collaborationAPI } from './useCollaboration';
 import Onboarding from './Onboarding';
@@ -64,6 +64,77 @@ const PROMPT_TEMPLATES = [
   { category: 'General', name: 'Draft email', prompt: 'Help me draft a professional email about...' },
   { category: 'General', name: 'Meeting prep', prompt: 'Help me prepare for a meeting about...' },
 ];
+
+// Static demo message data — keyed by task ID, each entry is [content, isUser, timestamp]
+// User messages use null for userEmail/userName (filled in at render time with currentUser)
+const STATIC_MESSAGE_DATA = {
+  'task-0a': [
+    ["Can you summarize what was discussed in this morning's standup?", true, '9:15 AM'],
+    ["Of course! Here's a summary of this morning's standup:\n\n• Dev team completed the API integration for the payment module\n• QA reported 3 critical bugs in the checkout flow - being addressed today\n• Design finalized the new dashboard mockups\n• Sprint velocity is on track for the release deadline", false, '9:16 AM'],
+    ["Were there any blockers mentioned?", true, '9:17 AM'],
+    ["Yes, two blockers were identified:\n\n1. The third-party vendor hasn't provided updated API credentials yet - Sarah is following up\n2. Server capacity needs approval for the load testing environment - Mike escalated to IT", false, '9:18 AM'],
+  ],
+  'task-0b': [
+    ["Help me prioritize the emails from this morning.", true, '10:00 AM'],
+    ["I've analyzed your inbox. Here's the priority breakdown:\n\n🔴 **High Priority (3 emails)**\n• CFO requesting Q4 projections by EOD\n• Client escalation from Acme Corp\n• Security alert from IT\n\n🟡 **Medium Priority (7 emails)**\n• Team meeting reschedule requests\n• Vendor contract renewals\n\n🟢 **Low Priority (12 emails)**\n• Newsletter subscriptions\n• FYI updates", false, '10:01 AM'],
+    ["Draft a response to the CFO email.", true, '10:05 AM'],
+    ["Here's a draft response:\n\n\"Hi Michael,\n\nThank you for reaching out. I'm currently finalizing the Q4 projections and will have the complete report ready by 4 PM today.\n\nKey highlights I can share now:\n• Revenue trending 12% above forecast\n• Operating costs within budget\n• Two new enterprise contracts pending\n\nI'll include detailed breakdowns in the full report.\n\nBest regards\"", false, '10:06 AM'],
+  ],
+  'task-0c': [
+    ["What's on the agenda for the team sync?", true, '2:00 PM'],
+    ["Here's the agenda for today's team sync:\n\n1. **Project Updates** (15 min)\n   - Sprint progress review\n   - Demo of new features\n\n2. **Resource Planning** (10 min)\n   - Q1 hiring needs\n   - Training schedule\n\n3. **Open Discussion** (5 min)\n   - Team concerns\n   - Process improvements", false, '2:01 PM'],
+  ],
+  'task-1': [
+    ["I need help with the Q4 Revenue Report.", true, '2:30 PM'],
+    ["I'd be happy to help with the Q4 Revenue Report! Based on the current data:\n\n📊 **Q4 Revenue Summary**\n• Total Revenue: $4.2M (↑15% YoY)\n• Recurring Revenue: $3.1M\n• New Business: $1.1M\n\nWould you like me to help analyze trends, generate visualizations, or draft the executive summary?", false, '2:31 PM'],
+    ["Let's start with analyzing the revenue trends.", true, '2:32 PM'],
+    ["Here's the Q4 revenue trend analysis:\n\n**Monthly Breakdown:**\n• October: $1.3M (strongest month)\n• November: $1.5M (↑15% MoM)\n• December: $1.4M (holiday impact)\n\n**Key Insights:**\n1. Enterprise segment grew 23%\n2. SMB segment stable at 8% growth\n3. APAC region outperformed expectations by 18%\n\nShall I create charts for the board presentation?", false, '2:33 PM'],
+  ],
+  'task-2': [
+    ["Help me plan the 2026 budget allocation.", true, '11:00 AM'],
+    ["I'll help you structure the 2026 budget. Based on 2025 actuals and growth projections:\n\n**Proposed 2026 Budget Allocation:**\n\n• Personnel: 45% ($5.4M)\n• Technology: 20% ($2.4M)\n• Marketing: 15% ($1.8M)\n• Operations: 12% ($1.44M)\n• R&D: 8% ($960K)\n\nTotal: $12M (20% increase from 2025)\n\nWould you like to adjust any categories?", false, '11:01 AM'],
+    ["Can we increase R&D to 12%?", true, '11:05 AM'],
+    ["Absolutely! Here's the revised allocation with R&D at 12%:\n\n**Adjusted 2026 Budget:**\n• Personnel: 43% ($5.16M) - reduced by 2%\n• Technology: 18% ($2.16M) - reduced by 2%\n• Marketing: 15% ($1.8M) - unchanged\n• Operations: 12% ($1.44M) - unchanged\n• R&D: 12% ($1.44M) - increased by 4%\n\nThis supports the new AI initiative roadmap. Shall I prepare the justification document?", false, '11:06 AM'],
+  ],
+  'task-3': [
+    ["Show me the expense audit findings.", true, '3:00 PM'],
+    ["✅ **Expense Audit Complete**\n\nHere are the key findings:\n\n**Compliant Areas:**\n• Travel expenses properly documented\n• Vendor payments within policy\n• Payroll accuracy: 99.8%\n\n**Areas of Concern:**\n• 3 instances of missing receipts (total: $847)\n• Software subscriptions overlap detected ($2,400/year savings opportunity)\n\n**Recommendations:**\n1. Implement automated receipt capture\n2. Consolidate redundant SaaS tools", false, '3:01 PM'],
+  ],
+  'task-4': [
+    ["What's the current inventory status?", true, '9:00 AM'],
+    ["Here's your inventory analysis:\n\n📦 **Current Stock Levels:**\n• Raw Materials: 85% capacity\n• Work in Progress: 62% capacity\n• Finished Goods: 78% capacity\n\n⚠️ **Alerts:**\n• Component SKU-4521 below reorder point\n• Warehouse B approaching capacity (92%)\n\n📈 **30-Day Forecast:**\n• Expected stockout: SKU-7834 (Dec 15)\n• Overstock risk: SKU-2156 (excess 2,400 units)", false, '9:01 AM'],
+    ["Generate a reorder recommendation.", true, '9:05 AM'],
+    ["**Recommended Reorder List:**\n\n| SKU | Item | Current | Reorder Qty | Supplier | Lead Time |\n|-----|------|---------|-------------|----------|------------|\n| 4521 | Circuit Board | 150 | 500 | TechParts Co | 14 days |\n| 7834 | Power Supply | 80 | 300 | ElecSource | 21 days |\n| 3298 | Casing Unit | 200 | 400 | PlastiMold | 7 days |\n\nEstimated total: $45,200\nShall I generate the purchase orders?", false, '9:06 AM'],
+  ],
+  'task-5': [
+    ["Summarize our supply chain performance.", true, '10:30 AM'],
+    ["**Supply Chain Review - Q4 2025**\n\n🚚 **Delivery Performance:**\n• On-time delivery: 94.2% (target: 95%)\n• Average lead time: 12.3 days\n• Expedited shipments: 8% of orders\n\n💰 **Cost Metrics:**\n• Freight costs: ↑7% (fuel surcharges)\n• Warehousing: Within budget\n• Supplier costs: Stable\n\n⚡ **Risk Areas:**\n• Single-source dependency for 3 critical components\n• Port congestion affecting APAC shipments", false, '10:31 AM'],
+  ],
+  'task-6': [
+    ["Show me the onboarding checklist status.", true, '8:30 AM'],
+    ["✅ **Employee Onboarding Complete**\n\n**New Hires This Month: 5**\n\nAll tasks completed:\n• ✅ IT equipment provisioned\n• ✅ System access granted\n• ✅ Benefits enrollment done\n• ✅ Compliance training finished\n• ✅ Manager introductions scheduled\n• ✅ 30-day check-ins calendared\n\n**Feedback Score:** 4.8/5.0\n\"Smoothest onboarding I've experienced!\" - New hire", false, '8:31 AM'],
+  ],
+  'task-7': [
+    ["Help me prepare for performance reviews.", true, '1:00 PM'],
+    ["I'll help you prepare for the upcoming performance reviews.\n\n**Review Period:** Q4 2025\n**Team Size:** 12 employees\n**Due Date:** January 15, 2026\n\n**Preparation Checklist:**\n- [ ] Gather 360 feedback (8/12 complete)\n- [ ] Review goal completion metrics\n- [ ] Document achievements & growth areas\n- [ ] Prepare compensation recommendations\n\nWould you like me to pull the individual performance metrics?", false, '1:01 PM'],
+    ["Yes, show me the metrics for the team.", true, '1:05 PM'],
+    ["**Team Performance Metrics:**\n\n| Employee | Goals Met | Projects | Rating |\n|----------|-----------|----------|--------|\n| Alice M. | 95% | 4/4 | Exceeds |\n| Bob K. | 88% | 3/4 | Meets |\n| Carol S. | 100% | 5/4 | Exceeds |\n| David L. | 75% | 3/4 | Developing |\n\n**Team Average:** 89.5% goal completion\n**Highlights:** 3 promotions recommended", false, '1:06 PM'],
+  ],
+  'task-8': [
+    ["What training sessions are scheduled?", true, '4:00 PM'],
+    ["**Q1 2026 Training Schedule:**\n\n📅 **January**\n• Jan 8: Leadership Fundamentals (Managers)\n• Jan 15: Cybersecurity Awareness (All staff)\n• Jan 22: New CRM System Training (Sales)\n\n📅 **February**\n• Feb 5: DEI Workshop (All staff)\n• Feb 12: Project Management Certification (Selected)\n• Feb 19: Customer Service Excellence (Support)\n\n📅 **March**\n• Mar 4: Annual Compliance Refresh (All staff)\n• Mar 18: Advanced Excel (Finance)\n\n**Budget Used:** $12,400 / $25,000 allocated", false, '4:01 PM'],
+  ],
+  'task-9': [
+    ["What's the current state of our sales pipeline?", true, '11:30 AM'],
+    ["**Lead Pipeline Report - December 2025**\n\n🎯 **Pipeline Summary:**\n• Total Leads: 247\n• Qualified Opportunities: 89\n• Pipeline Value: $2.8M\n\n**Stage Breakdown:**\n• Discovery: 45 leads ($890K)\n• Proposal: 28 leads ($1.2M)\n• Negotiation: 16 leads ($710K)\n\n**Win Probability:**\n• Expected Close (90 days): $1.4M\n• Weighted Pipeline: $980K\n\n📈 **Trending:** Pipeline up 18% MoM", false, '11:31 AM'],
+    ["Which deals are closest to closing?", true, '11:35 AM'],
+    ["**Hot Deals - Expected to Close This Month:**\n\n1. **Acme Corporation** - $340K\n   - Stage: Contract Review\n   - Probability: 90%\n   - Next Step: Legal approval pending\n\n2. **TechStart Inc** - $180K\n   - Stage: Final Negotiation\n   - Probability: 85%\n   - Next Step: Pricing discussion Friday\n\n3. **Global Logistics** - $275K\n   - Stage: Proposal Sent\n   - Probability: 70%\n   - Next Step: Demo scheduled Dec 12", false, '11:36 AM'],
+  ],
+  'task-10': [
+    ["Analyze our customer retention metrics.", true, '3:30 PM'],
+    ["**Customer Retention Analysis**\n\n📊 **Key Metrics:**\n• Retention Rate: 91.2% (Industry avg: 85%)\n• Churn Rate: 8.8%\n• Net Promoter Score: 62\n\n**Cohort Analysis:**\n• Year 1 customers: 78% retained\n• Year 2+ customers: 95% retained\n• Enterprise tier: 98% retained\n\n⚠️ **At-Risk Accounts (5):**\n• Usage dropped >40% last 90 days\n• Support tickets increased 3x\n\nShall I generate outreach recommendations?", false, '3:31 PM'],
+  ],
+};
 
 // Storage key for global app settings (admin-controlled)
 const APP_SETTINGS_KEY = 'ava_app_settings';
@@ -293,7 +364,7 @@ const clearOtherUsersFromLocalStorage = (currentEmail) => {
     // Remove other users' data
     keysToRemove.forEach(key => {
       localStorage.removeItem(key);
-      console.log(`Cleared localStorage for: ${key}`);
+      // Cleared localStorage entry
     });
 
     return keysToRemove.length;
@@ -1581,7 +1652,7 @@ export default function ErpAI() {
     // Clear other users' cached data to prevent data bleeding
     const clearedCount = clearOtherUsersFromLocalStorage(user.email);
     if (clearedCount > 0) {
-      console.log(`Cleared ${clearedCount} other user(s) from localStorage for privacy`);
+      // Cleared other users from localStorage for privacy
     }
 
     // Helper to apply user data to state
@@ -1619,7 +1690,7 @@ export default function ErpAI() {
 
     if (cachedData && !isCachedDataStale(cachedData, 60)) {
       // Use cached data for immediate display
-      console.log('Fast startup: Loading user data from localStorage cache');
+      // Fast startup from localStorage cache
       applyUserData(cachedData, user.name);
       setIsDataLoaded(true);
       setIsLoggedIn(true);
@@ -1644,7 +1715,7 @@ export default function ErpAI() {
             const localUpdated = cachedData.lastUpdated ? new Date(cachedData.lastUpdated) : new Date(0);
 
             if (backendUpdated > localUpdated) {
-              console.log('Background sync: Backend has newer data, updating local state');
+              // Backend has newer data, updating local state
               applyUserData(backendData, user.name);
               // Update localStorage with backend data
               saveUserToLocalStorage(user.email, {
@@ -1653,7 +1724,7 @@ export default function ErpAI() {
               });
             } else {
               // Local is newer or same, push to backend
-              console.log('Background sync: Local data is current, syncing to backend');
+              // Local data is current, syncing to backend
               collaborationAPI.saveUserData(user.email, {
                 ...cachedData,
                 name: user.name
@@ -1662,7 +1733,7 @@ export default function ErpAI() {
           }
         })
         .catch(err => {
-          console.log('Background sync failed (offline mode):', err.message);
+          // Background sync failed (offline mode)
         });
 
       return;
@@ -1733,11 +1804,11 @@ export default function ErpAI() {
 
       // Try localStorage as fallback for offline support
       if (cachedData) {
-        console.log('Using stale localStorage cache as fallback (offline mode)');
+        // Using stale localStorage cache as fallback (offline mode)
         applyUserData(cachedData, user.name);
       } else {
         // No cache available - use defaults with role
-        console.log('No cache available, using defaults');
+        // No cache available, using defaults
         const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
         setCurrentUser({
           ...user,
@@ -2107,7 +2178,7 @@ export default function ErpAI() {
           setClaudeConfigured(status.configured);
         })
         .catch(err => {
-          console.log('Claude status check failed (expected if backend unavailable):', err.message);
+          // Claude status check failed (expected if backend unavailable)
           setClaudeConfigured(false);
         });
     }
@@ -2140,7 +2211,7 @@ export default function ErpAI() {
         .then(collabs => {
           setSharedUsers(prev => ({ ...prev, [activeTask]: collabs }));
         })
-        .catch(err => console.log('Could not load collaborators:', err.message));
+        .catch(() => {});
     }
 
     return () => {
@@ -2159,7 +2230,7 @@ export default function ErpAI() {
             setClaudeConfigured(true);
           }
         })
-        .catch(err => console.log('Could not check Claude status:', err.message));
+        .catch(() => {});
     }
   }, [isLoggedIn]);
 
@@ -2239,7 +2310,7 @@ export default function ErpAI() {
   useEffect(() => {
     // When a task is shared with the current user, add it to the Shared folder
     const unsubTaskShared = onTaskShared((sharedTaskInfo) => {
-      console.log('Task shared with you:', sharedTaskInfo);
+      // Task shared with user
 
       // Create a task entry for the Shared folder
       const newSharedTask = {
@@ -2276,7 +2347,7 @@ export default function ErpAI() {
 
     // When a task is unshared from the current user, remove it from the Shared folder
     const unsubTaskUnshared = onTaskUnshared(({ taskId }) => {
-      console.log('Task unshared from you:', taskId);
+      // Task unshared
 
       setFolders(prev => prev.map(folder => {
         if (folder.isSharedFolder) {
@@ -2375,7 +2446,7 @@ export default function ErpAI() {
           setLastSyncTime(new Date());
         }
       } catch (error) {
-        console.log('Backend sync failed:', error.message);
+        // Backend sync failed
         setSyncStatus('disconnected');
       }
     };
@@ -2424,7 +2495,7 @@ export default function ErpAI() {
           }));
         }
       } catch (error) {
-        console.log('Could not fetch shared tasks:', error.message);
+        // Could not fetch shared tasks
       }
     };
 
@@ -2523,7 +2594,7 @@ export default function ErpAI() {
     // Find the Notepad folder
     const notepadFolder = folders.find(f => f.id === 'folder-notepad');
     if (!notepadFolder) {
-      console.log('Notepad folder not found');
+      // Notepad folder not found
       return;
     }
 
@@ -2560,7 +2631,7 @@ export default function ErpAI() {
       return prev;
     });
 
-    console.log('Message pinned to Notepad:', title);
+    // Message pinned to Notepad
   }, [folders]);
 
   // Drag and drop handlers for tabs
@@ -2701,7 +2772,7 @@ export default function ErpAI() {
         await collaborationAPI.addCollaborator(newTaskId, currentUser.email, currentUser.email);
       }
     } catch (error) {
-      console.log('Backend registration skipped (offline mode):', error.message);
+      // Backend registration skipped (offline mode)
     }
 
     // Open the new task in a tab
@@ -2811,7 +2882,7 @@ export default function ErpAI() {
         .then(collabs => {
           setSharedUsers(prev => ({ ...prev, [task.id]: collabs }));
         })
-        .catch(err => console.log('Could not load collaborators:', err.message));
+        .catch(() => {});
     }
   };
 
@@ -2950,9 +3021,9 @@ export default function ErpAI() {
     // Delete from backend database
     try {
       await collaborationAPI.deleteTask(taskIdToDelete);
-      console.log(`Task ${taskIdToDelete} deleted from database`);
+      // Task deleted from database
     } catch (error) {
-      console.log('Backend delete skipped (offline mode):', error.message);
+      // Backend delete skipped (offline mode)
     }
 
     // Close modal
@@ -3036,74 +3107,20 @@ export default function ErpAI() {
   const getCurrentTypingUsers = (taskId) => typingIndicators[taskId] || [];
 
   // Task-specific messages (userEmail is used to determine message colors)
-  const taskMessages = {
-    'task-0a': [
-      { content: "Can you summarize what was discussed in this morning's standup?", isUser: true, timestamp: '9:15 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "Of course! Here's a summary of this morning's standup:\n\n• Dev team completed the API integration for the payment module\n• QA reported 3 critical bugs in the checkout flow - being addressed today\n• Design finalized the new dashboard mockups\n• Sprint velocity is on track for the release deadline", isUser: false, timestamp: '9:16 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-      { content: "Were there any blockers mentioned?", isUser: true, timestamp: '9:17 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "Yes, two blockers were identified:\n\n1. The third-party vendor hasn't provided updated API credentials yet - Sarah is following up\n2. Server capacity needs approval for the load testing environment - Mike escalated to IT", isUser: false, timestamp: '9:18 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-0b': [
-      { content: "Help me prioritize the emails from this morning.", isUser: true, timestamp: '10:00 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "I've analyzed your inbox. Here's the priority breakdown:\n\n🔴 **High Priority (3 emails)**\n• CFO requesting Q4 projections by EOD\n• Client escalation from Acme Corp\n• Security alert from IT\n\n🟡 **Medium Priority (7 emails)**\n• Team meeting reschedule requests\n• Vendor contract renewals\n\n🟢 **Low Priority (12 emails)**\n• Newsletter subscriptions\n• FYI updates", isUser: false, timestamp: '10:01 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-      { content: "Draft a response to the CFO email.", isUser: true, timestamp: '10:05 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "Here's a draft response:\n\n\"Hi Michael,\n\nThank you for reaching out. I'm currently finalizing the Q4 projections and will have the complete report ready by 4 PM today.\n\nKey highlights I can share now:\n• Revenue trending 12% above forecast\n• Operating costs within budget\n• Two new enterprise contracts pending\n\nI'll include detailed breakdowns in the full report.\n\nBest regards\"", isUser: false, timestamp: '10:06 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-0c': [
-      { content: "What's on the agenda for the team sync?", isUser: true, timestamp: '2:00 PM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "Here's the agenda for today's team sync:\n\n1. **Project Updates** (15 min)\n   - Sprint progress review\n   - Demo of new features\n\n2. **Resource Planning** (10 min)\n   - Q1 hiring needs\n   - Training schedule\n\n3. **Open Discussion** (5 min)\n   - Team concerns\n   - Process improvements", isUser: false, timestamp: '2:01 PM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-1': [
-      { content: "I need help with the Q4 Revenue Report.", isUser: true, timestamp: '2:30 PM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "I'd be happy to help with the Q4 Revenue Report! Based on the current data:\n\n📊 **Q4 Revenue Summary**\n• Total Revenue: $4.2M (↑15% YoY)\n• Recurring Revenue: $3.1M\n• New Business: $1.1M\n\nWould you like me to help analyze trends, generate visualizations, or draft the executive summary?", isUser: false, timestamp: '2:31 PM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-      { content: "Let's start with analyzing the revenue trends.", isUser: true, timestamp: '2:32 PM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "Here's the Q4 revenue trend analysis:\n\n**Monthly Breakdown:**\n• October: $1.3M (strongest month)\n• November: $1.5M (↑15% MoM)\n• December: $1.4M (holiday impact)\n\n**Key Insights:**\n1. Enterprise segment grew 23%\n2. SMB segment stable at 8% growth\n3. APAC region outperformed expectations by 18%\n\nShall I create charts for the board presentation?", isUser: false, timestamp: '2:33 PM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-2': [
-      { content: "Help me plan the 2026 budget allocation.", isUser: true, timestamp: '11:00 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "I'll help you structure the 2026 budget. Based on 2025 actuals and growth projections:\n\n**Proposed 2026 Budget Allocation:**\n\n• Personnel: 45% ($5.4M)\n• Technology: 20% ($2.4M)\n• Marketing: 15% ($1.8M)\n• Operations: 12% ($1.44M)\n• R&D: 8% ($960K)\n\nTotal: $12M (20% increase from 2025)\n\nWould you like to adjust any categories?", isUser: false, timestamp: '11:01 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-      { content: "Can we increase R&D to 12%?", isUser: true, timestamp: '11:05 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "Absolutely! Here's the revised allocation with R&D at 12%:\n\n**Adjusted 2026 Budget:**\n• Personnel: 43% ($5.16M) - reduced by 2%\n• Technology: 18% ($2.16M) - reduced by 2%\n• Marketing: 15% ($1.8M) - unchanged\n• Operations: 12% ($1.44M) - unchanged\n• R&D: 12% ($1.44M) - increased by 4%\n\nThis supports the new AI initiative roadmap. Shall I prepare the justification document?", isUser: false, timestamp: '11:06 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-3': [
-      { content: "Show me the expense audit findings.", isUser: true, timestamp: '3:00 PM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "✅ **Expense Audit Complete**\n\nHere are the key findings:\n\n**Compliant Areas:**\n• Travel expenses properly documented\n• Vendor payments within policy\n• Payroll accuracy: 99.8%\n\n**Areas of Concern:**\n• 3 instances of missing receipts (total: $847)\n• Software subscriptions overlap detected ($2,400/year savings opportunity)\n\n**Recommendations:**\n1. Implement automated receipt capture\n2. Consolidate redundant SaaS tools", isUser: false, timestamp: '3:01 PM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-4': [
-      { content: "What's the current inventory status?", isUser: true, timestamp: '9:00 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "Here's your inventory analysis:\n\n📦 **Current Stock Levels:**\n• Raw Materials: 85% capacity\n• Work in Progress: 62% capacity\n• Finished Goods: 78% capacity\n\n⚠️ **Alerts:**\n• Component SKU-4521 below reorder point\n• Warehouse B approaching capacity (92%)\n\n📈 **30-Day Forecast:**\n• Expected stockout: SKU-7834 (Dec 15)\n• Overstock risk: SKU-2156 (excess 2,400 units)", isUser: false, timestamp: '9:01 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-      { content: "Generate a reorder recommendation.", isUser: true, timestamp: '9:05 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "**Recommended Reorder List:**\n\n| SKU | Item | Current | Reorder Qty | Supplier | Lead Time |\n|-----|------|---------|-------------|----------|------------|\n| 4521 | Circuit Board | 150 | 500 | TechParts Co | 14 days |\n| 7834 | Power Supply | 80 | 300 | ElecSource | 21 days |\n| 3298 | Casing Unit | 200 | 400 | PlastiMold | 7 days |\n\nEstimated total: $45,200\nShall I generate the purchase orders?", isUser: false, timestamp: '9:06 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-5': [
-      { content: "Summarize our supply chain performance.", isUser: true, timestamp: '10:30 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "**Supply Chain Review - Q4 2025**\n\n🚚 **Delivery Performance:**\n• On-time delivery: 94.2% (target: 95%)\n• Average lead time: 12.3 days\n• Expedited shipments: 8% of orders\n\n💰 **Cost Metrics:**\n• Freight costs: ↑7% (fuel surcharges)\n• Warehousing: Within budget\n• Supplier costs: Stable\n\n⚡ **Risk Areas:**\n• Single-source dependency for 3 critical components\n• Port congestion affecting APAC shipments", isUser: false, timestamp: '10:31 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-6': [
-      { content: "Show me the onboarding checklist status.", isUser: true, timestamp: '8:30 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "✅ **Employee Onboarding Complete**\n\n**New Hires This Month: 5**\n\nAll tasks completed:\n• ✅ IT equipment provisioned\n• ✅ System access granted\n• ✅ Benefits enrollment done\n• ✅ Compliance training finished\n• ✅ Manager introductions scheduled\n• ✅ 30-day check-ins calendared\n\n**Feedback Score:** 4.8/5.0\n\"Smoothest onboarding I've experienced!\" - New hire", isUser: false, timestamp: '8:31 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-7': [
-      { content: "Help me prepare for performance reviews.", isUser: true, timestamp: '1:00 PM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "I'll help you prepare for the upcoming performance reviews.\n\n**Review Period:** Q4 2025\n**Team Size:** 12 employees\n**Due Date:** January 15, 2026\n\n**Preparation Checklist:**\n- [ ] Gather 360 feedback (8/12 complete)\n- [ ] Review goal completion metrics\n- [ ] Document achievements & growth areas\n- [ ] Prepare compensation recommendations\n\nWould you like me to pull the individual performance metrics?", isUser: false, timestamp: '1:01 PM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-      { content: "Yes, show me the metrics for the team.", isUser: true, timestamp: '1:05 PM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "**Team Performance Metrics:**\n\n| Employee | Goals Met | Projects | Rating |\n|----------|-----------|----------|--------|\n| Alice M. | 95% | 4/4 | Exceeds |\n| Bob K. | 88% | 3/4 | Meets |\n| Carol S. | 100% | 5/4 | Exceeds |\n| David L. | 75% | 3/4 | Developing |\n\n**Team Average:** 89.5% goal completion\n**Highlights:** 3 promotions recommended", isUser: false, timestamp: '1:06 PM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-8': [
-      { content: "What training sessions are scheduled?", isUser: true, timestamp: '4:00 PM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "**Q1 2026 Training Schedule:**\n\n📅 **January**\n• Jan 8: Leadership Fundamentals (Managers)\n• Jan 15: Cybersecurity Awareness (All staff)\n• Jan 22: New CRM System Training (Sales)\n\n📅 **February**\n• Feb 5: DEI Workshop (All staff)\n• Feb 12: Project Management Certification (Selected)\n• Feb 19: Customer Service Excellence (Support)\n\n📅 **March**\n• Mar 4: Annual Compliance Refresh (All staff)\n• Mar 18: Advanced Excel (Finance)\n\n**Budget Used:** $12,400 / $25,000 allocated", isUser: false, timestamp: '4:01 PM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-9': [
-      { content: "What's the current state of our sales pipeline?", isUser: true, timestamp: '11:30 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "**Lead Pipeline Report - December 2025**\n\n🎯 **Pipeline Summary:**\n• Total Leads: 247\n• Qualified Opportunities: 89\n• Pipeline Value: $2.8M\n\n**Stage Breakdown:**\n• Discovery: 45 leads ($890K)\n• Proposal: 28 leads ($1.2M)\n• Negotiation: 16 leads ($710K)\n\n**Win Probability:**\n• Expected Close (90 days): $1.4M\n• Weighted Pipeline: $980K\n\n📈 **Trending:** Pipeline up 18% MoM", isUser: false, timestamp: '11:31 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-      { content: "Which deals are closest to closing?", isUser: true, timestamp: '11:35 AM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "**Hot Deals - Expected to Close This Month:**\n\n1. **Acme Corporation** - $340K\n   - Stage: Contract Review\n   - Probability: 90%\n   - Next Step: Legal approval pending\n\n2. **TechStart Inc** - $180K\n   - Stage: Final Negotiation\n   - Probability: 85%\n   - Next Step: Pricing discussion Friday\n\n3. **Global Logistics** - $275K\n   - Stage: Proposal Sent\n   - Probability: 70%\n   - Next Step: Demo scheduled Dec 12", isUser: false, timestamp: '11:36 AM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-    'task-10': [
-      { content: "Analyze our customer retention metrics.", isUser: true, timestamp: '3:30 PM', userEmail: currentUser?.email, userName: currentUser?.name },
-      { content: "**Customer Retention Analysis**\n\n📊 **Key Metrics:**\n• Retention Rate: 91.2% (Industry avg: 85%)\n• Churn Rate: 8.8%\n• Net Promoter Score: 62\n\n**Cohort Analysis:**\n• Year 1 customers: 78% retained\n• Year 2+ customers: 95% retained\n• Enterprise tier: 98% retained\n\n⚠️ **At-Risk Accounts (5):**\n• Usage dropped >40% last 90 days\n• Support tickets increased 3x\n\nShall I generate outreach recommendations?", isUser: false, timestamp: '3:31 PM', userEmail: 'ava@unit4.com', userName: 'Ava' },
-    ],
-  };
+  // Build taskMessages from static data, injecting currentUser info (memoized)
+  const taskMessages = React.useMemo(() => {
+    const result = {};
+    for (const [taskId, messages] of Object.entries(STATIC_MESSAGE_DATA)) {
+      result[taskId] = messages.map(([content, isUser, timestamp]) => ({
+        content,
+        isUser,
+        timestamp,
+        userEmail: isUser ? currentUser?.email : 'ava@unit4.com',
+        userName: isUser ? currentUser?.name : 'Ava',
+      }));
+    }
+    return result;
+  }, [currentUser?.email, currentUser?.name]);
 
   // Get messages for the current task (combines static + real-time)
   const getTaskMessages = (taskId) => {
@@ -3354,7 +3371,7 @@ export default function ErpAI() {
             <div className="fixed inset-0 z-[9]" onClick={() => setUserMenuOpen(false)} />
             <div className={`absolute bottom-full left-3 right-3 mb-2 rounded-lg shadow-lg border py-1 z-10 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
               <button
-                onClick={() => { console.log('Settings clicked'); setUserMenuOpen(false); }}
+                onClick={() => { setUserMenuOpen(false); }}
                 className={`w-full flex items-center gap-2 px-3 py-3 transition-colors touch-manipulation ${darkMode ? 'text-gray-300 hover:bg-gray-600' : 'text-gray-600 hover:bg-gray-100'}`}
               >
                 <Settings size={16} />
@@ -4310,7 +4327,7 @@ export default function ErpAI() {
               icon={tool.icon}
               label={tool.label}
               description={tool.description}
-              onClick={() => console.log(`Clicked: ${tool.label}`)}
+              onClick={() => {}}
               darkMode={darkMode}
             />
           ))}
