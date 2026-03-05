@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FolderOpen, ChevronRight, ChevronDown, CheckCircle2, Circle, Clock, Plus, Settings, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Send, Wrench, Sparkles, FileText, Image, LogOut, ChevronUp, X, MoreVertical, SplitSquareHorizontal, Maximize2, Share2, Users, Wifi, WifiOff, Loader2, Menu, Mail, AlertCircle, Trash2, Pencil, FolderEdit, Bell, UserMinus, UserCog, ArrowLeft, RefreshCw, CheckCircle, Sun, Moon, Palette, RotateCcw, Plug, Zap, Terminal, Globe, Database, MessageSquare, Github, Pin, HelpCircle, BarChart3, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { Folder, FolderOpen, ChevronRight, ChevronDown, CheckCircle2, Circle, Clock, Plus, Settings, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Send, Wrench, Sparkles, FileText, Image, LogOut, ChevronUp, X, MoreVertical, SplitSquareHorizontal, Maximize2, Share2, Users, Wifi, WifiOff, Loader2, Menu, Mail, AlertCircle, Trash2, Pencil, FolderEdit, Bell, UserMinus, UserCog, ArrowLeft, RefreshCw, CheckCircle, Sun, Moon, Palette, RotateCcw, Plug, Zap, Terminal, Globe, Database, MessageSquare, Github, Pin, HelpCircle, BarChart3, Mic, MicOff, Volume2, VolumeX, ExternalLink } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import useCollaboration, { collaborationAPI } from './useCollaboration';
 import Onboarding from './Onboarding';
@@ -1171,26 +1171,24 @@ const getMessageColors = (email, isCurrentUser, darkMode = false) => {
 
 // Parse message content to extract chart blocks
 const CHART_REGEX = /```chart\s*\n([\s\S]*?)```/g;
+const EMBED_REGEX = /```embed\s*\n([\s\S]*?)```/g;
+const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
 
-const parseMessageContent = (content) => {
-  if (!content || typeof content !== 'string') return [{ type: 'text', content: content || '' }];
-
+// Extract fenced blocks from text using a regex, returning mixed segments
+const extractBlocks = (text, regex, type, validator) => {
   const segments = [];
   let lastIndex = 0;
   let match;
-
-  const regex = new RegExp(CHART_REGEX.source, 'g');
-  while ((match = regex.exec(content)) !== null) {
-    // Add text before the chart block
+  const re = new RegExp(regex.source, 'g');
+  while ((match = re.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      const text = content.slice(lastIndex, match.index).trim();
-      if (text) segments.push({ type: 'text', content: text });
+      const t = text.slice(lastIndex, match.index).trim();
+      if (t) segments.push({ type: 'text', content: t });
     }
-    // Try to parse chart JSON
     try {
-      const chartData = JSON.parse(match[1].trim());
-      if (chartData && chartData.type && chartData.data) {
-        segments.push({ type: 'chart', data: chartData });
+      const data = JSON.parse(match[1].trim());
+      if (validator(data)) {
+        segments.push({ type, data });
       } else {
         segments.push({ type: 'text', content: match[0] });
       }
@@ -1199,14 +1197,42 @@ const parseMessageContent = (content) => {
     }
     lastIndex = match.index + match[0].length;
   }
+  if (lastIndex < text.length) {
+    const t = text.slice(lastIndex).trim();
+    if (t) segments.push({ type: 'text', content: t });
+  }
+  return segments.length > 0 ? segments : [{ type: 'text', content: text }];
+};
 
-  // Add remaining text after last chart block
-  if (lastIndex < content.length) {
-    const text = content.slice(lastIndex).trim();
-    if (text) segments.push({ type: 'text', content: text });
+const parseMessageContent = (content) => {
+  if (!content || typeof content !== 'string') return [{ type: 'text', content: content || '' }];
+
+  // Phase 1: Extract chart blocks
+  const phase1 = extractBlocks(content, CHART_REGEX, 'chart', d => d && d.type && d.data);
+
+  // Phase 2: Extract embed blocks from remaining text segments
+  const phase2 = [];
+  for (const seg of phase1) {
+    if (seg.type !== 'text') { phase2.push(seg); continue; }
+    phase2.push(...extractBlocks(seg.content, EMBED_REGEX, 'embed', d => d && d.url));
   }
 
-  return segments.length > 0 ? segments : [{ type: 'text', content }];
+  // Phase 3: Detect URLs in remaining text segments
+  const phase3 = [];
+  for (const seg of phase2) {
+    if (seg.type !== 'text') { phase3.push(seg); continue; }
+    const parts = seg.content.split(URL_REGEX);
+    for (const part of parts) {
+      if (!part) continue;
+      if (/^https?:\/\//.test(part)) {
+        phase3.push({ type: 'link', url: part, text: part });
+      } else {
+        phase3.push({ type: 'text', content: part });
+      }
+    }
+  }
+
+  return phase3.length > 0 ? phase3 : [{ type: 'text', content }];
 };
 
 // Chart renderer component for inline charts
@@ -1300,7 +1326,7 @@ const ChartRenderer = ({ chartData, darkMode, themeHex }) => {
 };
 
 // Message bubble component
-const Message = ({ content, isUser, timestamp, userName, userEmail, currentUserEmail, onPinMessage, onSpeakText, onStopSpeaking, isSpeakingGlobal, darkMode, themeHex }) => {
+const Message = ({ content, isUser, timestamp, userName, userEmail, currentUserEmail, onPinMessage, onSpeakText, onStopSpeaking, isSpeakingGlobal, darkMode, themeHex, onOpenWebViewer }) => {
   const isCurrentUser = userEmail ? userEmail === currentUserEmail : isUser;
   const isAI = !userEmail || userEmail === 'ava@unit4.com';
   const isCollaborator = !isCurrentUser && !isAI;
@@ -1343,11 +1369,52 @@ const Message = ({ content, isUser, timestamp, userName, userEmail, currentUserE
             isCurrentUser ? 'rounded-br-md' : 'rounded-bl-md'
           } relative`}
         >
-          {parseMessageContent(content).map((segment, idx) => (
-            segment.type === 'chart'
-              ? <ChartRenderer key={idx} chartData={segment.data} darkMode={darkMode} themeHex={themeHex} />
-              : <p key={idx} className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{segment.content}</p>
-          ))}
+          {parseMessageContent(content).map((segment, idx) => {
+            if (segment.type === 'chart') {
+              return <ChartRenderer key={idx} chartData={segment.data} darkMode={darkMode} themeHex={themeHex} />;
+            }
+            if (segment.type === 'embed') {
+              return (
+                <button
+                  key={idx}
+                  onClick={() => onOpenWebViewer && onOpenWebViewer(segment.data.url, segment.data.title)}
+                  className={`flex items-center gap-2 my-2 px-3 py-2 rounded-lg border transition-colors text-left w-full ${
+                    darkMode
+                      ? 'bg-gray-700 border-gray-600 hover:border-blue-500 hover:bg-gray-600'
+                      : 'bg-blue-50 border-blue-200 hover:border-blue-400 hover:bg-blue-100'
+                  }`}
+                >
+                  <Globe size={16} className="text-blue-500 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <span className={`text-xs font-medium block truncate ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                      {segment.data.title || 'Open page'}
+                    </span>
+                    <span className={`text-[10px] block truncate ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {segment.data.url}
+                    </span>
+                  </div>
+                  <ExternalLink size={14} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                </button>
+              );
+            }
+            if (segment.type === 'link') {
+              return (
+                <a
+                  key={idx}
+                  href={segment.url}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (onOpenWebViewer) onOpenWebViewer(segment.url);
+                  }}
+                  className={`underline cursor-pointer ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-500'}`}
+                  title={`Open ${segment.url} in viewer`}
+                >
+                  {segment.text}
+                </a>
+              );
+            }
+            return <p key={idx} className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{segment.content}</p>;
+          })}
           <span className={`text-[10px] sm:text-xs mt-1 block ${colors.timestamp}`}>
             {timestamp}
           </span>
@@ -1545,6 +1612,37 @@ export default function ErpAI() {
   const [dragOverTabIndex, setDragOverTabIndex] = useState(null);
   const [tabMenuOpenId, setTabMenuOpenId] = useState(null);
   const [splitViewTask, setSplitViewTask] = useState(null);
+
+  // Web viewer state
+  const [webViewerUrl, setWebViewerUrl] = useState(null);
+  const [webViewerTitle, setWebViewerTitle] = useState('');
+  const [webViewerLoading, setWebViewerLoading] = useState(true);
+  const [webViewerError, setWebViewerError] = useState(false);
+  const webViewerTimeoutRef = useRef(null);
+
+  const openWebViewer = useCallback((url, title = '') => {
+    setWebViewerUrl(url);
+    setWebViewerTitle(title || url);
+    setWebViewerLoading(true);
+    setWebViewerError(false);
+    setRightPanelOpen(true);
+    // 8-second timeout for sites that block iframe embedding
+    if (webViewerTimeoutRef.current) clearTimeout(webViewerTimeoutRef.current);
+    webViewerTimeoutRef.current = setTimeout(() => {
+      setWebViewerLoading(prev => {
+        if (prev) setWebViewerError(true);
+        return false;
+      });
+    }, 8000);
+  }, []);
+
+  const closeWebViewer = useCallback(() => {
+    setWebViewerUrl(null);
+    setWebViewerTitle('');
+    setWebViewerLoading(false);
+    setWebViewerError(false);
+    if (webViewerTimeoutRef.current) clearTimeout(webViewerTimeoutRef.current);
+  }, []);
 
   // New Task Modal state
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
@@ -4020,6 +4118,7 @@ export default function ErpAI() {
                     onSpeakText={speakText}
                     onStopSpeaking={stopSpeaking}
                     isSpeakingGlobal={isSpeaking}
+                    onOpenWebViewer={openWebViewer}
                     darkMode={darkMode}
                     themeHex={THEME_COLORS[appSettings.themeColor].hex}
                   />
@@ -4135,6 +4234,7 @@ export default function ErpAI() {
                     onSpeakText={speakText}
                     onStopSpeaking={stopSpeaking}
                     isSpeakingGlobal={isSpeaking}
+                    onOpenWebViewer={openWebViewer}
                     darkMode={darkMode}
                     themeHex={THEME_COLORS[appSettings.themeColor].hex}
                   />
@@ -4244,19 +4344,92 @@ export default function ErpAI() {
       {isMobile && rightPanelOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
-          onClick={() => setRightPanelOpen(false)}
+          onClick={() => { if (webViewerUrl) closeWebViewer(); else setRightPanelOpen(false); }}
         />
       )}
 
-      {/* Right Tools Panel */}
+      {/* Right Tools Panel / Web Viewer Drawer */}
       <div
         data-tour="tools-panel"
         className={`${
           isMobile
-            ? `fixed inset-y-0 right-0 z-50 w-72 transform transition-transform duration-300 ease-in-out ${rightPanelOpen ? 'translate-x-0' : 'translate-x-full'}`
-            : `${rightPanelOpen ? 'w-72' : 'w-0'} transition-all duration-300 ease-in-out overflow-hidden`
+            ? `fixed inset-y-0 right-0 z-50 ${webViewerUrl ? 'w-full' : 'w-72'} transform transition-all duration-300 ease-in-out ${rightPanelOpen ? 'translate-x-0' : 'translate-x-full'}`
+            : `${rightPanelOpen ? (webViewerUrl ? 'w-[55%] shrink-0' : 'w-72') : 'w-0'} transition-all duration-300 ease-in-out overflow-hidden`
         } border-l ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'} flex flex-col`}
       >
+        {webViewerUrl ? (
+          <>
+            {/* Web Viewer Header */}
+            <div className={`p-3 border-b flex items-center gap-3 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <Globe size={18} className={THEME_COLORS[appSettings.themeColor].primaryText} />
+              <div className="flex-1 min-w-0">
+                <h2 className={`font-semibold text-sm truncate ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{webViewerTitle || 'Web Page'}</h2>
+                <p className={`text-xs truncate ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{webViewerUrl}</p>
+              </div>
+              <a
+                href={webViewerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-200 text-gray-500 hover:text-gray-700'}`}
+                title="Open in new tab"
+              >
+                <ExternalLink size={16} />
+              </a>
+              <button
+                onClick={closeWebViewer}
+                className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200' : 'hover:bg-gray-200 text-gray-500 hover:text-gray-700'}`}
+                title="Close viewer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Web Viewer Content */}
+            <div className="flex-1 relative">
+              {webViewerLoading && !webViewerError && (
+                <div className="absolute inset-0 flex items-center justify-center z-10" style={{ backgroundColor: darkMode ? 'rgba(31,41,55,0.8)' : 'rgba(255,255,255,0.8)' }}>
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 size={32} className={`animate-spin ${THEME_COLORS[appSettings.themeColor].primaryText}`} />
+                    <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Loading page...</p>
+                  </div>
+                </div>
+              )}
+              {webViewerError ? (
+                <div className="flex-1 flex items-center justify-center h-full p-8">
+                  <div className="text-center max-w-sm">
+                    <AlertCircle size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                    <h3 className={`font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Unable to load this page</h3>
+                    <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      This site may block embedding in iframes. Try opening it directly instead.
+                    </p>
+                    <a
+                      href={webViewerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white ${THEME_COLORS[appSettings.themeColor].primary} hover:opacity-90 transition-opacity`}
+                    >
+                      <ExternalLink size={14} />
+                      Open in new tab
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <iframe
+                  src={webViewerUrl}
+                  title={webViewerTitle || 'Web Page'}
+                  className="w-full h-full border-0"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                  referrerPolicy="no-referrer"
+                  onLoad={() => {
+                    setWebViewerLoading(false);
+                    if (webViewerTimeoutRef.current) clearTimeout(webViewerTimeoutRef.current);
+                  }}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <>
         {/* Panel Header */}
         <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between">
@@ -4502,6 +4675,8 @@ export default function ErpAI() {
             </p>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* New Task Modal */}

@@ -68,7 +68,25 @@ Guidelines for charts:
 - Keep data arrays to 4-8 items for readability
 - Always include a title
 - Color is optional (the app theme color is used by default)
-- You can include multiple charts in one response`;
+- You can include multiple charts in one response
+
+## Embedded Web Pages
+
+You can embed web pages in your responses using fenced code blocks with the "embed" language tag. The frontend renders these as clickable cards that open the page in an in-app viewer.
+
+Format:
+\`\`\`embed
+{ "url": "https://example.com/page", "title": "Page Title" }
+\`\`\`
+
+Guidelines for embeds:
+- Use embeds when sharing documentation links, reference pages, or external resources
+- Always use HTTPS URLs
+- Always include a descriptive title
+- Don't embed pages that require login or authentication
+- Don't embed pages that are known to block iframe loading (e.g. Google, Facebook)
+- You can include multiple embeds in one response
+- You can mix embeds with charts and regular text`;
 
 class ClaudeService {
   constructor() {
